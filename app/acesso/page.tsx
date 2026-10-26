@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { RotateCcw, AlertCircle, ShieldCheck } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { fetchClasses, FALLBACK_CLASSES } from '@/lib/classes';
 import { createOrResumeStudentSession, getActiveStudent, getActiveSession, clearActiveStudentSession } from '@/lib/storage';
 
 export default function AcessoPage() {
@@ -15,8 +16,11 @@ export default function AcessoPage() {
   const [existingSession, setExistingSession] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [classes, setClasses] = useState<string[]>(FALLBACK_CLASSES);
+  const [removed, setRemoved] = useState(false);
 
   useEffect(() => {
+    setRemoved(new URLSearchParams(window.location.search).get('removido') === '1');
     const student = getActiveStudent();
     const session = getActiveSession();
     if (student) {
@@ -27,6 +31,13 @@ export default function AcessoPage() {
     if (session) {
       setExistingSession(session);
     }
+    fetchClasses().then(({ turmas }) => {
+      const names = turmas.map((t) => t.nome);
+      if (names.length === 0) return;
+      setClasses(names);
+      // New students start on the first registered class
+      if (!student) setClassName(names[0]);
+    });
   }, []);
 
   const handleStartSession = (e: React.FormEvent) => {
@@ -107,6 +118,12 @@ export default function AcessoPage() {
           )}
 
           <form onSubmit={handleStartSession} className="space-y-5" noValidate>
+            {removed && !existingStudent && (
+              <div role="status" className="rounded-xl bg-alerta-fundo border border-alerta/25 p-4 text-alerta">
+                O professor removeu sua sessão anterior. Identifique-se de novo para começar.
+              </div>
+            )}
+
             {error && (
               <div role="alert" className="rounded-xl bg-erro-fundo border border-erro/30 p-4 text-erro flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
@@ -137,9 +154,11 @@ export default function AcessoPage() {
                 Turma
               </label>
               <select id="student-class" value={className} onChange={(e) => setClassName(e.target.value)} className="campo">
-                <option value="1º Ano Informática Integrado - Breves">1º Ano Informática Integrado - Campus Breves</option>
-                <option value="Turma A - Redes de Computadores">Turma A - Redes de Computadores</option>
-                <option value="Turma B - Redes de Computadores">Turma B - Redes de Computadores</option>
+                {(classes.includes(className) || !className ? classes : [className, ...classes]).map((nome) => (
+                  <option key={nome} value={nome}>
+                    {nome}
+                  </option>
+                ))}
               </select>
             </div>
 

@@ -45,6 +45,19 @@ async function seedMissions(pool: mysql.Pool): Promise<void> {
   }
 }
 
+export const DEFAULT_CLASSES = [
+  '1º Ano Informática Integrado - Breves',
+  'Turma A - Redes de Computadores',
+  'Turma B - Redes de Computadores',
+];
+
+// Only when the turmas table is created: the classes that used to be fixed in the access form
+async function seedClasses(pool: mysql.Pool): Promise<void> {
+  for (const nome of DEFAULT_CLASSES) {
+    await pool.execute('INSERT IGNORE INTO turmas (nome, criada_em) VALUES (?, ?)', [nome, new Date()]);
+  }
+}
+
 // Columns added after the first deploy: CREATE TABLE IF NOT EXISTS does not add them to existing tables.
 const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['missoes', 'disponivel', 'TINYINT(1) NOT NULL DEFAULT 1'],
@@ -63,12 +76,22 @@ async function addMissingColumns(pool: mysql.Pool): Promise<void> {
   }
 }
 
+async function tableExists(pool: mysql.Pool, table: string): Promise<boolean> {
+  const [rows] = await pool.query<mysql.RowDataPacket[]>(
+    'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    [table]
+  );
+  return rows.length > 0;
+}
+
 async function createSchema(pool: mysql.Pool): Promise<void> {
+  const classesTableIsNew = !(await tableExists(pool, 'turmas'));
   for (const statement of SCHEMA_STATEMENTS) {
     await pool.query(statement);
   }
   await addMissingColumns(pool);
   await seedMissions(pool);
+  if (classesTableIsNew) await seedClasses(pool);
   await migrateLegacyTables(pool);
 }
 

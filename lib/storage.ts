@@ -42,6 +42,12 @@ function sendToServer(op: SyncOperation, data: Record<string, unknown>): void {
         body,
         keepalive: body.length < 60000
       });
+      if (res.status === 410) {
+        // The teacher deleted this student: drop the local session and go back to identification
+        clearActiveStudentSession();
+        window.location.href = '/acesso?removido=1';
+        return;
+      }
       if (!res.ok && res.status !== 503) {
         console.warn(`[MySQL] Falha ao sincronizar "${op}" (HTTP ${res.status})`);
       }
@@ -685,6 +691,8 @@ export async function fetchAllStudentEvaluationsFromCloud(): Promise<CloudFetchR
       mergedMap.set(item.sessionId, item);
     }
     for (const localItem of localEvaluations) {
+      // Real sessions (UUID) live in the database; one missing there was deleted by the teacher
+      if (isValidUuid(localItem.sessionId)) continue;
       if (!mergedMap.has(localItem.sessionId)) {
         mergedMap.set(localItem.sessionId, localItem);
       }
@@ -699,6 +707,21 @@ export async function fetchAllStudentEvaluationsFromCloud(): Promise<CloudFetchR
     console.warn('[MySQL] Falha ao buscar avaliações do servidor, usando cache local:', err);
     return { evaluations: localEvaluations, databaseConnected: false };
   }
+}
+
+// Teacher removes a student and all of their answers (server and this browser's registry).
+export async function deleteStudentEvaluation(sessionId: string): Promise<boolean> {
+  if (isValidUuid(sessionId)) {
+    try {
+      const res = await fetch(`/api/professor/alunos?sessionId=${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      if (!res.ok) return false;
+    } catch {
+      return false;
+    }
+  }
+  const remaining = getAllStudentEvaluations().filter((e) => e.sessionId !== sessionId);
+  localStorage.setItem(STORAGE_KEYS.ALL_STUDENTS_REGISTRY, JSON.stringify(remaining));
+  return true;
 }
 
 export function updateTeacherEvaluation(params: {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { PoolConnection } from 'mysql2/promise';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { getDb, isDatabaseConfigured, toDbDate, toDbDateOrNull, toDbJson } from '@/lib/db';
 import { asMissionNumber, asNumber, asText, isUuid } from '@/lib/server-validation';
 import { MISSIONS_CONFIG } from '@/lib/simulation-engine';
@@ -276,6 +276,11 @@ export async function POST(request: Request) {
 
   const conn = await pool.getConnection();
   try {
+    // Session deleted by the teacher: do not recreate it from the student's browser
+    const [deleted] = await conn.query<RowDataPacket[]>('SELECT 1 FROM sessoes_excluidas WHERE sessao_id = ?', [session.id]);
+    if (deleted.length > 0) {
+      return NextResponse.json({ ok: false, error: 'Sessão excluída pelo professor' }, { status: 410 });
+    }
     await conn.beginTransaction();
     await upsertStudentAndSession(conn, student, session);
     await applyOperation(conn, op, session.id, data || {});

@@ -2,11 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Download, Edit3, LogOut, RefreshCw, Search } from 'lucide-react';
+import { CheckCircle2, Download, Edit3, LogOut, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Dialog from '@/components/Dialog';
-import { getAllStudentEvaluations, fetchAllStudentEvaluationsFromCloud, updateTeacherEvaluation } from '@/lib/storage';
+import {
+  getAllStudentEvaluations,
+  fetchAllStudentEvaluationsFromCloud,
+  updateTeacherEvaluation,
+  deleteStudentEvaluation
+} from '@/lib/storage';
+import { Turma, fetchClasses, createClass, renameClass, deleteClass } from '@/lib/classes';
 import { StudentFullEvaluation, RubricCriteriaScore } from '@/lib/types';
 import { getTotalScore, MISSIONS_CONFIG } from '@/lib/simulation-engine';
 import { fetchMissionAvailability, setMissionAvailability } from '@/lib/mission-availability';
@@ -29,6 +35,16 @@ export default function ProfessorDashboardPage() {
   const [closedMissions, setClosedMissions] = useState<Set<number>>(new Set());
   const [availabilityControlled, setAvailabilityControlled] = useState(false);
   const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
+  const [studentToDelete, setStudentToDelete] = useState<StudentFullEvaluation | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [listNotice, setListNotice] = useState<string | null>(null);
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [classesControlled, setClassesControlled] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [editingClass, setEditingClass] = useState<{ id: number; nome: string } | null>(null);
+  const [classToDelete, setClassToDelete] = useState<Turma | null>(null);
+  const [classNotice, setClassNotice] = useState<{ text: string; error: boolean } | null>(null);
 
   useEffect(() => {
     // Verify auth
@@ -58,7 +74,61 @@ export default function ProfessorDashboardPage() {
     const availability = await fetchMissionAvailability();
     setClosedMissions(availability.closed);
     setAvailabilityControlled(availability.controlled);
+    await loadClasses();
     setSyncing(false);
+  };
+
+  const loadClasses = async () => {
+    const result = await fetchClasses();
+    setTurmas(result.turmas);
+    setClassesControlled(result.controlled);
+  };
+
+  const handleConfirmDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const ok = await deleteStudentEvaluation(studentToDelete.sessionId);
+    setDeleting(false);
+    if (!ok) {
+      setDeleteError('Não foi possível excluir agora. Verifique a conexão e tente de novo.');
+      return;
+    }
+    const name = studentToDelete.student.fullName;
+    setEvaluations((list) => list.filter((e) => e.sessionId !== studentToDelete.sessionId));
+    setStudentToDelete(null);
+    setListNotice(`${name} e todas as suas respostas foram excluídos.`);
+    loadClasses();
+  };
+
+  const showClassResult = async (error: string | null, success: string) => {
+    setClassNotice(error ? { text: error, error: true } : { text: success, error: false });
+    if (!error) await loadData();
+    return !error;
+  };
+
+  const handleCreateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nome = newClassName.trim();
+    if (nome.length < 2) {
+      setClassNotice({ text: 'Informe o nome da turma.', error: true });
+      return;
+    }
+    if (await showClassResult(await createClass(nome), `Turma "${nome}" criada.`)) setNewClassName('');
+  };
+
+  const handleRenameClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass) return;
+    const nome = editingClass.nome.trim();
+    if (await showClassResult(await renameClass(editingClass.id, nome), `Turma renomeada para "${nome}".`)) setEditingClass(null);
+  };
+
+  const handleConfirmDeleteClass = async () => {
+    if (!classToDelete) return;
+    const target = classToDelete;
+    setClassToDelete(null);
+    await showClassResult(await deleteClass(target.id), `Turma "${target.nome}" excluída.`);
   };
 
   const handleToggleMission = async (numero: number) => {
@@ -155,9 +225,14 @@ export default function ProfessorDashboardPage() {
   // Filtered
   const filteredList = evaluations.filter((item) => {
     const matchesSearch = item.student.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesClass = filterClass === 'todas' || item.student.className.toLowerCase().includes(filterClass.toLowerCase());
+    const matchesClass = filterClass === 'todas' || item.student.className === filterClass;
     return matchesSearch && matchesClass;
   });
+
+  // Registered classes plus any class name still used by students (e.g. demo students)
+  const classFilterOptions = Array.from(new Set([...turmas.map((t) => t.nome), ...evaluations.map((e) => e.student.className)])).sort(
+    (a, b) => a.localeCompare(b, 'pt-BR')
+  );
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -264,6 +339,111 @@ export default function ProfessorDashboardPage() {
           </p>
         </section>
 
+        <section aria-labelledby="titulo-turmas" className="folha p-4 sm:p-6">
+          <h2 id="titulo-turmas" className="text-2xl font-extrabold">
+            Turmas
+          </h2>
+          <p className="text-grafite-2 mt-1">Os alunos escolhem uma destas turmas ao se identificar.</p>
+
+          {!classesControlled ? (
+            <p className="mt-4 rounded-xl bg-alerta-fundo text-alerta p-4">
+              Sem conexão com o banco de dados: as turmas padrão estão em uso e não podem ser alteradas agora.
+            </p>
+          ) : (
+            <>
+              <form onSubmit={handleCreateClass} className="mt-4 flex flex-col sm:flex-row gap-2 max-w-xl">
+                <label htmlFor="nova-turma" className="sr-only">
+                  Nome da nova turma
+                </label>
+                <input
+                  id="nova-turma"
+                  type="text"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  placeholder="Ex: 1º Ano Informática B - 2027"
+                  className="campo"
+                />
+                <button type="submit" className="btn btn-primario shrink-0">
+                  <Plus className="w-[18px] h-[18px]" aria-hidden="true" />
+                  Criar turma
+                </button>
+              </form>
+
+              {turmas.length === 0 ? (
+                <p className="mt-4 text-grafite-2">Nenhuma turma cadastrada. Crie a primeira acima.</p>
+              ) : (
+                <ul className="mt-4 divide-y divide-linha border-y border-linha">
+                  {turmas.map((t) => (
+                    <li key={t.id} className="py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                      {editingClass?.id === t.id ? (
+                        <form onSubmit={handleRenameClass} className="flex-1 flex flex-col sm:flex-row gap-2">
+                          <label htmlFor={`renomear-${t.id}`} className="sr-only">
+                            Novo nome para {t.nome}
+                          </label>
+                          <input
+                            id={`renomear-${t.id}`}
+                            type="text"
+                            value={editingClass.nome}
+                            onChange={(e) => setEditingClass({ id: t.id, nome: e.target.value })}
+                            className="campo"
+                            autoFocus
+                          />
+                          <span className="flex gap-2 shrink-0">
+                            <button type="submit" className="btn btn-primario">
+                              Salvar
+                            </button>
+                            <button type="button" onClick={() => setEditingClass(null)} className="btn btn-discreto">
+                              Cancelar
+                            </button>
+                          </span>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold">{t.nome}</p>
+                            <p className="text-sm text-grafite-2">
+                              {t.alunos === 0 ? 'Nenhum aluno' : t.alunos === 1 ? '1 aluno' : `${t.alunos} alunos`}
+                            </p>
+                          </div>
+                          <span className="flex gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setClassNotice(null);
+                                setEditingClass({ id: t.id, nome: t.nome });
+                              }}
+                              className="btn btn-secundario !min-h-10 !py-1.5"
+                              aria-label={`Renomear a turma ${t.nome}`}
+                            >
+                              <Pencil className="w-4 h-4" aria-hidden="true" />
+                              Renomear
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setClassNotice(null);
+                                setClassToDelete(t);
+                              }}
+                              className="btn !min-h-10 !w-10 !p-0 text-erro hover:bg-erro-fundo"
+                              aria-label={`Excluir a turma ${t.nome}`}
+                              title="Excluir turma"
+                            >
+                              <Trash2 className="w-[18px] h-[18px]" aria-hidden="true" />
+                            </button>
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          <p role="status" className={`mt-3 min-h-6 ${classNotice?.error ? 'text-erro font-semibold' : 'text-grafite-2'}`}>
+            {classNotice?.text}
+          </p>
+        </section>
+
         <section aria-labelledby="titulo-dossies" className="folha overflow-hidden">
           <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-linha">
             <h2 id="titulo-dossies" className="text-2xl font-extrabold">
@@ -290,14 +470,21 @@ export default function ProfessorDashboardPage() {
                 </label>
                 <select id="filtro-turma" value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="campo sm:w-56">
                   <option value="todas">Todas as Turmas</option>
-                  <option value="1º Ano Informática">1º Ano Informática - Breves</option>
-                  <option value="Turma A">Turma A</option>
-                  <option value="Turma B">Turma B</option>
+                  {classFilterOptions.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
           </div>
 
+          {listNotice && (
+            <p role="status" className="px-4 sm:px-5 py-3 bg-ok-fundo text-ok font-semibold border-b border-linha">
+              {listNotice}
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left min-w-[760px]">
               <caption className="sr-only">Estudantes, progresso e nota de processo</caption>
@@ -356,15 +543,29 @@ export default function ProfessorDashboardPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEvaluationModal(item)}
-                            className="btn btn-secundario !min-h-10 !py-1.5 whitespace-nowrap"
-                            aria-label={`Avaliar Dossiê de ${item.student.fullName}`}
-                          >
-                            <Edit3 className="w-4 h-4" aria-hidden="true" />
-                            Avaliar Dossiê
-                          </button>
+                          <span className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEvaluationModal(item)}
+                              className="btn btn-secundario !min-h-10 !py-1.5 whitespace-nowrap"
+                              aria-label={`Avaliar Dossiê de ${item.student.fullName}`}
+                            >
+                              <Edit3 className="w-4 h-4" aria-hidden="true" />
+                              Avaliar Dossiê
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteError(null);
+                                setStudentToDelete(item);
+                              }}
+                              className="btn !min-h-10 !w-10 !p-0 text-erro hover:bg-erro-fundo"
+                              aria-label={`Excluir ${item.student.fullName} e suas respostas`}
+                              title="Excluir aluno e respostas"
+                            >
+                              <Trash2 className="w-[18px] h-[18px]" aria-hidden="true" />
+                            </button>
+                          </span>
                         </td>
                       </tr>
                     );
@@ -377,6 +578,67 @@ export default function ProfessorDashboardPage() {
       </main>
 
       <Footer />
+
+      <Dialog
+        open={Boolean(studentToDelete)}
+        onClose={() => !deleting && setStudentToDelete(null)}
+        size="md"
+        title="Excluir aluno?"
+        description={studentToDelete ? `${studentToDelete.student.fullName}, ${studentToDelete.student.className}` : undefined}
+        closeLabel="Cancelar exclusão"
+        footer={
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
+            <button type="button" onClick={() => setStudentToDelete(null)} disabled={deleting} className="btn btn-discreto" data-autofocus>
+              Cancelar
+            </button>
+            <button type="button" onClick={handleConfirmDeleteStudent} disabled={deleting} className="btn bg-erro text-white hover:bg-[#8f1c13]">
+              <Trash2 className="w-[18px] h-[18px]" aria-hidden="true" />
+              {deleting ? 'Excluindo...' : 'Excluir aluno e respostas'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p>Serão apagados de forma definitiva:</p>
+          <ul className="list-disc pl-6 space-y-1 text-grafite-2">
+            <li>o cadastro do aluno e o progresso nas missões;</li>
+            <li>suspeitas, testes, intervenções, conceitos salvos e justificativas;</li>
+            <li>as notas da rubrica e o seu parecer.</li>
+          </ul>
+          <p className="font-semibold">Essa ação não pode ser desfeita.</p>
+          {deleteError && (
+            <p role="alert" className="rounded-xl bg-erro-fundo text-erro p-3 font-semibold">
+              {deleteError}
+            </p>
+          )}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(classToDelete)}
+        onClose={() => setClassToDelete(null)}
+        size="md"
+        title="Excluir turma?"
+        description={classToDelete?.nome}
+        closeLabel="Cancelar exclusão"
+        footer={
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
+            <button type="button" onClick={() => setClassToDelete(null)} className="btn btn-discreto" data-autofocus>
+              Cancelar
+            </button>
+            <button type="button" onClick={handleConfirmDeleteClass} className="btn bg-erro text-white hover:bg-[#8f1c13]">
+              <Trash2 className="w-[18px] h-[18px]" aria-hidden="true" />
+              Excluir turma
+            </button>
+          </div>
+        }
+      >
+        <p>
+          {classToDelete && classToDelete.alunos > 0
+            ? `Esta turma tem ${classToDelete.alunos === 1 ? '1 aluno' : `${classToDelete.alunos} alunos`}. Exclua os alunos ou renomeie a turma antes de apagá-la.`
+            : 'A turma deixa de aparecer na tela de identificação dos alunos.'}
+        </p>
+      </Dialog>
 
       <Dialog
         open={Boolean(selectedStudent)}

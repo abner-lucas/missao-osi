@@ -12,6 +12,21 @@ export const SCHEMA_STATEMENTS: string[] = [
   disponibilidade_alterada_em DATETIME(3) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
+  // Turmas cadastradas pelo professor (aparecem na tela de identificação do aluno)
+  `CREATE TABLE IF NOT EXISTS turmas (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(255) NOT NULL,
+  criada_em DATETIME(3) NOT NULL,
+  UNIQUE KEY uq_turmas_nome (nome)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  // Sessões excluídas pelo professor: impede que o navegador do aluno recrie os dados apagados
+  `CREATE TABLE IF NOT EXISTS sessoes_excluidas (
+  sessao_id CHAR(36) NOT NULL PRIMARY KEY,
+  aluno_nome VARCHAR(255) NULL,
+  excluida_em DATETIME(3) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
   `CREATE TABLE IF NOT EXISTS alunos (
   id CHAR(36) NOT NULL PRIMARY KEY,
   nome_completo VARCHAR(255) NOT NULL,
