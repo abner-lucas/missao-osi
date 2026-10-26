@@ -1,8 +1,0 @@
-{
-  "name": "Missão OSI - Investigadores da Rede",
-  "description": "Simulador investigativo educacional das sete camadas do modelo OSI com laboratório de diagnóstico, mapa mental interativo e caderno de evidências para o IFPA Campus Breves.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
