@@ -16,7 +16,7 @@ function getPool(): mysql.Pool {
   if (!globalForDb.missaoOsiPool) {
     globalForDb.missaoOsiPool = mysql.createPool({
       // On Hostinger the app connects to MySQL on the same server via 127.0.0.1 (not localhost/IPv6).
-      host: process.env.DB_HOST || '127.0.0.1',
+      host: !process.env.DB_HOST || process.env.DB_HOST === 'localhost' ? '127.0.0.1' : process.env.DB_HOST,
       port: Number(process.env.DB_PORT || 3306),
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
