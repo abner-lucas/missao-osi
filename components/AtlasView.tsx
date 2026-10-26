@@ -1,34 +1,33 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  BookOpen,
-  Layers,
-  Search,
-  Bookmark,
-  BookmarkCheck,
-  Check,
-  ExternalLink,
-  Shield,
-  Cpu,
-  Globe,
-  Radio,
-  FileCheck
-} from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Bookmark, BookmarkCheck, Search } from 'lucide-react';
 import { OSI_LAYERS_DATA, OSI_STANDARDIZATION_BODIES } from '@/lib/atlas-data';
 import { LayerInfo } from '@/lib/types';
 import { toggleConceptInNotebook, getEvidenceNotebook } from '@/lib/storage';
+import { wireBackground } from '@/lib/wires';
 import EncapsulationAnimator from './EncapsulationAnimator';
+
+type AtlasTab = 'camadas' | 'encapsulamento' | 'padronizacao';
+
+const TABS: { key: AtlasTab; label: string }[] = [
+  { key: 'camadas', label: 'As 7 camadas' },
+  { key: 'encapsulamento', label: 'Encapsulamento' },
+  { key: 'padronizacao', label: 'Organizações e normas' },
+];
 
 export default function AtlasView() {
   const [selectedLayerNumber, setSelectedLayerNumber] = useState<number>(7);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [savedConceptIds, setSavedConceptIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'camadas' | 'encapsulamento' | 'padronizacao'>('camadas');
+  const [activeTab, setActiveTab] = useState<AtlasTab>('camadas');
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     const nb = getEvidenceNotebook();
     setSavedConceptIds(nb.savedConceptIds);
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const layerParam = Number(params.get('layer'));
@@ -61,289 +60,226 @@ export default function AtlasView() {
       })
     : OSI_LAYERS_DATA;
 
+  const onTabKey = (e: React.KeyboardEvent, index: number) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const next = (index + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+    setActiveTab(TABS[next].key);
+    tabRefs.current[TABS[next].key]?.focus();
+  };
+
   return (
     <div className="space-y-6">
-      {/* Top Bar with Mode Switcher & Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-xl bg-[#0F172A] border border-slate-800">
-        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-slate-900 border border-slate-800 self-start text-xs font-medium">
-          <button
-            onClick={() => setActiveTab('camadas')}
-            className={`px-3 py-1.5 rounded-md transition-colors ${
-              activeTab === 'camadas'
-                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Pilha das 7 Camadas
-          </button>
-          <button
-            onClick={() => setActiveTab('encapsulamento')}
-            className={`px-3 py-1.5 rounded-md transition-colors ${
-              activeTab === 'encapsulamento'
-                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Encapsulamento Interativo
-          </button>
-          <button
-            onClick={() => setActiveTab('padronizacao')}
-            className={`px-3 py-1.5 rounded-md transition-colors ${
-              activeTab === 'padronizacao'
-                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Organizações & Normas
-          </button>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-linha">
+        <div role="tablist" aria-label="Modos do Atlas" className="flex overflow-x-auto -mb-px">
+          {TABS.map((t, i) => {
+            const selected = activeTab === t.key;
+            return (
+              <button
+                key={t.key}
+                ref={(el) => {
+                  tabRefs.current[t.key] = el;
+                }}
+                type="button"
+                role="tab"
+                id={`atlas-aba-${t.key}`}
+                aria-selected={selected}
+                aria-controls={`atlas-painel-${t.key}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveTab(t.key)}
+                onKeyDown={(e) => onTabKey(e, i)}
+                className={`shrink-0 min-h-12 px-4 border-b-[3px] font-bold whitespace-nowrap transition-colors ${
+                  selected ? 'border-caneta text-caneta' : 'border-transparent text-grafite-2 hover:text-grafite'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Concept Search */}
-        <div className="relative max-w-xs w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar protocolo, conceito ou PDU..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-          />
-        </div>
+        {activeTab === 'camadas' && (
+          <div className="relative w-full md:max-w-xs pb-3">
+            <label htmlFor="busca-atlas" className="sr-only">
+              Buscar no Atlas
+            </label>
+            <Search className="w-5 h-5 text-grafite-3 absolute left-3 top-[1.4rem] -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+            <input
+              id="busca-atlas"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar protocolo, conceito ou equipamento"
+              className="campo !pl-10"
+            />
+          </div>
+        )}
       </div>
 
-      {/* Mode 1: 7 Layers Interactive Stack & Details */}
       {activeTab === 'camadas' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Vertical Layers Stack (Left 4 columns) */}
-          <div className="lg:col-span-4 space-y-2">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 px-1">
-              Pilha de Referência OSI
-            </div>
-
-            {filteredLayers.map((layer) => {
-              const isSelected = selectedLayerNumber === layer.number;
-              return (
-                <button
-                  key={layer.number}
-                  onClick={() => setSelectedLayerNumber(layer.number)}
-                  className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between group ${
-                    isSelected
-                      ? 'bg-slate-900 border-cyan-500/80 ring-1 ring-cyan-500/40 text-white shadow-md'
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300 hover:bg-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs border"
-                      style={{
-                        backgroundColor: `${layer.color}15`,
-                        color: layer.color,
-                        borderColor: `${layer.color}40`,
-                      }}
-                    >
-                      L{layer.number}
-                    </span>
-                    <div>
-                      <div className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
-                        {layer.namePt}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        PDU: {layer.pdu}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-mono text-slate-500 group-hover:text-slate-300">
-                    {layer.nameEn}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Layer Technical Detail Dossier (Right 8 columns) */}
-          <div className="lg:col-span-8 bg-[#0F172A] border border-slate-800 rounded-xl p-6 space-y-6">
-            {/* Header of selected layer */}
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-5">
-              <div className="flex items-center gap-3">
-                <span
-                  className="w-10 h-10 rounded-xl flex items-center justify-center font-mono font-black text-sm border"
-                  style={{
-                    backgroundColor: `${selectedLayer.color}20`,
-                    color: selectedLayer.color,
-                    borderColor: `${selectedLayer.color}50`,
-                  }}
-                >
-                  L{selectedLayer.number}
-                </span>
-                <div>
-                  <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-                    Camada {selectedLayer.number}: {selectedLayer.namePt}
-                    <span className="text-sm font-normal text-slate-400 font-mono">
-                      ({selectedLayer.nameEn})
-                    </span>
-                  </h2>
-                  <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                    <span>Unidade de Dados (PDU): <strong className="text-cyan-300 font-mono">{selectedLayer.pdu}</strong></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Layer Summary */}
-            <div className="p-4 rounded-lg bg-slate-900/80 border border-slate-800 text-sm text-slate-300 leading-relaxed">
-              {selectedLayer.summary}
-            </div>
-
-            {/* Key Concepts with Save to Notebook button */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-amber-400" />
-                Conceitos Chave & Evidências Investigativas
-              </h3>
-
-              <div className="grid grid-cols-1 gap-3">
-                {selectedLayer.keyConcepts.map((concept) => {
-                  const isSaved = savedConceptIds.includes(concept.id);
+        <div role="tabpanel" id="atlas-painel-camadas" aria-labelledby="atlas-aba-camadas" className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_1fr]">
+          <nav aria-label="Camadas do modelo OSI">
+            <p className="sr-only" aria-live="polite">
+              {searchQuery.trim() ? `${filteredLayers.length} camadas encontradas` : ''}
+            </p>
+            {filteredLayers.length === 0 ? (
+              <p className="text-grafite-2 p-4">Nada encontrado para &quot;{searchQuery}&quot;.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {filteredLayers.map((layer) => {
+                  const isSelected = selectedLayerNumber === layer.number;
                   return (
-                    <div
-                      key={concept.id}
-                      className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5 hover:border-slate-700 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <h4 className="text-sm font-bold text-white">
-                          {concept.title}
-                        </h4>
-                        <button
-                          onClick={() => handleToggleSaveConcept(concept.id)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-colors border ${
-                            isSaved
-                              ? 'bg-amber-950 text-amber-300 border-amber-800'
-                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
-                          }`}
-                          title="Anexar este conceito ao seu Caderno de Evidências"
-                        >
-                          {isSaved ? (
-                            <>
-                              <BookmarkCheck className="w-3.5 h-3.5 text-amber-400" />
-                              <span>No Caderno</span>
-                            </>
-                          ) : (
-                            <>
-                              <Bookmark className="w-3.5 h-3.5" />
-                              <span>Salvar no Caderno</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <p className="text-xs text-slate-300 leading-normal">
-                        {concept.description}
-                      </p>
-
-                      <div className="p-2.5 rounded bg-slate-950 border border-slate-800/80 text-[11px] text-slate-400">
-                        <strong className="text-slate-300">Exemplo Real:</strong> {concept.realWorldExample}
-                      </div>
-                    </div>
+                    <li key={layer.number}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLayerNumber(layer.number)}
+                        aria-current={isSelected ? 'true' : undefined}
+                        className={`w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-3 transition-colors ${
+                          isSelected ? 'bg-folha shadow-[0_0_0_2px_var(--color-caneta)]' : 'hover:bg-folha'
+                        }`}
+                      >
+                        <span aria-hidden="true" className="font-display font-extrabold text-2xl w-6 text-center">
+                          {layer.number}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-bold text-lg leading-tight">
+                            <span className="sr-only">Camada {layer.number}: </span>
+                            {layer.namePt}
+                          </span>
+                          <span className="block text-sm text-grafite-2">Unidade de dados: {layer.pdu}</span>
+                        </span>
+                        <span aria-hidden="true" className="w-10 h-2.5 rounded-full shrink-0" style={{ background: wireBackground(layer.number) }} />
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            )}
+          </nav>
 
-            {/* Protocols, Devices & Standards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-              <div className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                  <Globe className="w-3.5 h-3.5 text-blue-400" />
-                  Protocolos Principais
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedLayer.protocols.map((p) => (
-                    <span key={p} className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.article
+              key={selectedLayer.number}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="folha overflow-hidden"
+              aria-labelledby="titulo-camada"
+            >
+              <div aria-hidden="true" className="h-3" style={{ background: wireBackground(selectedLayer.number) }} />
+              <div className="p-5 sm:p-8 space-y-7">
+                <header>
+                  <p className="text-grafite-2">
+                    Camada {selectedLayer.number}, em inglês {selectedLayer.nameEn}
+                  </p>
+                  <h2 id="titulo-camada" className="mt-1 text-[clamp(2rem,4vw,2.75rem)] font-extrabold [font-stretch:80%]">
+                    {selectedLayer.namePt}
+                  </h2>
+                  <p className="mt-1 text-grafite-2">
+                    Unidade de dados: <strong className="text-grafite">{selectedLayer.pdu}</strong>
+                  </p>
+                  <p className="mt-4 text-lg leading-relaxed max-w-prose">{selectedLayer.summary}</p>
+                </header>
 
-              <div className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                  <Cpu className="w-3.5 h-3.5 text-purple-400" />
-                  Equipamentos / Dispositivos
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedLayer.devices.map((d) => (
-                    <span key={d} className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-                      {d}
-                    </span>
-                  ))}
-                </div>
-              </div>
+                <section aria-labelledby="titulo-conceitos">
+                  <h3 id="titulo-conceitos" className="text-2xl font-extrabold">
+                    Conceitos-chave
+                  </h3>
+                  <ul className="mt-3 space-y-3">
+                    {selectedLayer.keyConcepts.map((concept) => {
+                      const isSaved = savedConceptIds.includes(concept.id);
+                      return (
+                        <li key={concept.id} className="rounded-xl border border-linha p-4 sm:p-5">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                            <h4 className={`text-lg font-extrabold leading-snug ${isSaved ? 'marca-texto' : ''}`}>{concept.title}</h4>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSaveConcept(concept.id)}
+                              aria-pressed={isSaved}
+                              className={`btn shrink-0 !min-h-10 !py-1.5 ${isSaved ? 'bg-marca text-grafite hover:bg-[#ffdd55]' : 'btn-secundario'}`}
+                              title="Anexar este conceito ao seu Caderno de Evidências"
+                            >
+                              {isSaved ? (
+                                <>
+                                  <BookmarkCheck className="w-4 h-4" aria-hidden="true" />
+                                  <span>No Caderno</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Bookmark className="w-4 h-4" aria-hidden="true" />
+                                  <span>Salvar no Caderno</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <p className="mt-2 leading-relaxed">{concept.description}</p>
+                          <p className="mt-2 text-grafite-2">
+                            <strong className="text-grafite">Exemplo real:</strong> {concept.realWorldExample}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
 
-              <div className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                  <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Normas e Padrões
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedLayer.standards.map((s) => (
-                    <span key={s} className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                      {s}
-                    </span>
+                <dl className="grid gap-5 md:grid-cols-3 border-t border-linha pt-6">
+                  {[
+                    { title: 'Protocolos', items: selectedLayer.protocols, mono: true },
+                    { title: 'Equipamentos', items: selectedLayer.devices, mono: false },
+                    { title: 'Normas e padrões', items: selectedLayer.standards, mono: true },
+                  ].map((group) => (
+                    <div key={group.title}>
+                      <dt className="font-bold">{group.title}</dt>
+                      <dd className="mt-2 flex flex-wrap gap-1.5">
+                        {group.items.map((item) => (
+                          <span key={item} className={`rounded-md bg-papel border border-linha px-2 py-0.5 text-[0.95rem] ${group.mono ? 'font-mono' : ''}`}>
+                            {item}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
                   ))}
-                </div>
+                </dl>
               </div>
-            </div>
-          </div>
+            </motion.article>
+          </AnimatePresence>
         </div>
       )}
 
-      {/* Mode 2: Interactive Encapsulation */}
       {activeTab === 'encapsulamento' && (
-        <EncapsulationAnimator />
+        <div role="tabpanel" id="atlas-painel-encapsulamento" aria-labelledby="atlas-aba-encapsulamento">
+          <EncapsulationAnimator />
+        </div>
       )}
 
-      {/* Mode 3: Standardization Bodies */}
       {activeTab === 'padronizacao' && (
-        <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-6 space-y-6">
-          <div>
-            <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <Shield className="w-5 h-5 text-cyan-400" />
-              Organizações de Padronização e Interoperabilidade de Rede
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Como múltiplos fabricantes de hardware e software garantem compatibilidade global nas 7 camadas
+        <div role="tabpanel" id="atlas-painel-padronizacao" aria-labelledby="atlas-aba-padronizacao" className="space-y-6">
+          <div className="max-w-2xl">
+            <h2 className="text-3xl font-extrabold">Quem define as regras da rede</h2>
+            <p className="mt-2 text-lg text-grafite-2">
+              Fabricantes diferentes conseguem conversar porque seguem as mesmas normas, nas sete camadas.
             </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid gap-6 md:grid-cols-2">
             {OSI_STANDARDIZATION_BODIES.map((cat) => (
-              <div key={cat.category} className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
-                <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono">
+              <section key={cat.category} aria-labelledby={`org-${cat.category}`} className="folha p-5 sm:p-6">
+                <h3 id={`org-${cat.category}`} className="text-2xl font-extrabold">
                   {cat.category}
-                </h4>
-                <div className="space-y-2.5">
+                </h3>
+                <ul className="mt-4 divide-y divide-linha">
                   {cat.organizations.map((org) => (
-                    <div key={org.code} className="p-3 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-white font-mono bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                          {org.code}
-                        </span>
-                        {'country' in org && (
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            {org.country}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs font-medium text-slate-200">
-                        {org.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {org.role}
-                      </div>
-                    </div>
+                    <li key={org.code} className="py-3 first:pt-0 last:pb-0">
+                      <p className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-display font-extrabold text-xl">{org.code}</span>
+                        {'country' in org && <span className="text-sm text-grafite-2">{org.country}</span>}
+                      </p>
+                      <p className="font-semibold">{org.name}</p>
+                      <p className="text-grafite-2">{org.role}</p>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </section>
             ))}
           </div>
         </div>

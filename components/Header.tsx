@@ -3,21 +3,33 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Network,
-  BookOpen,
-  ClipboardList,
-  User,
-  GraduationCap,
-  Sparkles,
-  Eye,
-  CheckCircle2,
-  ChevronRight,
-  Menu
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { NotebookPen, Menu, X, UserRound } from 'lucide-react';
 import { getActiveStudent, getActiveSession, getReducedMotionPreference, setReducedMotionPreference } from '@/lib/storage';
 import { StudentProfile, ActivitySession } from '@/lib/types';
 import EvidenceNotebookDrawer from './EvidenceNotebookDrawer';
+
+function MotionSwitch({ reduced, onToggle, compact = false }: { reduced: boolean; onToggle: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={reduced}
+      title={compact ? "Reduzir movimento" : undefined}
+      className="inline-flex items-center gap-2.5 min-h-11 px-2 rounded-lg text-sm font-semibold text-grafite-2 hover:text-caneta"
+    >
+      <span
+        aria-hidden="true"
+        className={`relative w-9 h-5 rounded-full transition-colors ${reduced ? 'bg-caneta' : 'bg-linha-forte'}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${reduced ? 'translate-x-4' : ''}`}
+        />
+      </span>
+      <span className={compact ? "sr-only" : undefined}>Reduzir movimento</span>
+    </button>
+  );
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -31,6 +43,7 @@ export default function Header() {
     setStudent(getActiveStudent());
     setSession(getActiveSession());
     setReducedMotion(getReducedMotionPreference());
+    setMobileMenuOpen(false);
   }, [pathname]);
 
   const toggleMotion = () => {
@@ -47,163 +60,159 @@ export default function Header() {
     { href: '/professor', label: 'Área Docente' },
   ];
 
+  const isActive = (href: string) => pathname === href || (href !== '/' && pathname.startsWith(href));
+
   return (
     <>
-      {/* Top Academic Identification Strip */}
-      <div className="bg-[#080D1A] border-b border-slate-800/80 px-4 py-1.5 text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-mono">
-              IFPA CAMPUS BREVES
+      <header className="sticky top-0 z-40 bg-papel/95 backdrop-blur-sm border-b border-linha nao-imprimir">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-3 rounded-lg py-1" aria-label="Missão OSI, página inicial">
+            <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" className="shrink-0">
+              <rect x="1" y="5" width="32" height="24" rx="5" fill="#1b2430" />
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                <rect
+                  key={i}
+                  x={5.5 + i * 3.4}
+                  y="9"
+                  width="2"
+                  height="10"
+                  rx="1"
+                  fill={['#e1701f', '#2c9a57', '#2e62c9', '#8a5636', '#f0b38a', '#9fd3b3', '#a9c0ee'][i]}
+                />
+              ))}
+              <rect x="11" y="22" width="12" height="4" rx="1" fill="#f5f7f6" />
+            </svg>
+            <span className="leading-none">
+              <span className="block font-display text-xl font-extrabold [font-stretch:80%] text-grafite">Missão OSI</span>
+              <span className="block text-[0.8125rem] text-grafite-2 mt-0.5 whitespace-nowrap">IFPA Campus Breves</span>
             </span>
-            <span className="hidden sm:inline text-slate-500">•</span>
-            <span className="hidden sm:inline text-slate-300">
-              Curso Técnico Integrado em Informática • Redes de Computadores
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span className="text-slate-400 font-medium">
-              Prof. Me. Ábner Lucas
-            </span>
-            <button
-              onClick={toggleMotion}
-              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono transition-colors border ${
-                reducedMotion
-                  ? 'bg-amber-950/60 text-amber-300 border-amber-800/60'
-                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-              }`}
-              title="Ativar/desativar modo de animação reduzida"
-              aria-label="Alternar modo de movimento reduzido"
-            >
-              <Eye className="w-3 h-3" />
-              <span>Movimento {reducedMotion ? 'Reduzido' : 'Normal'}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main App Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-[#0B1120]/95 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          {/* Logo & Brand */}
-          <Link href="/" className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-md">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center border border-cyan-400/30 text-white shadow-sm">
-              <Network className="w-5 h-5 text-cyan-100" />
-            </div>
-            <div>
-              <div className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-                MISSÃO OSI
-                <span className="text-[10px] uppercase font-mono tracking-widest px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  Lab
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 hidden sm:block">
-                Investigadores da Rede
-              </div>
-            </div>
           </Link>
 
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 text-sm">
-            {navLinks.map((link) => {
-              const active = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-slate-800 text-cyan-300 border border-slate-700'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
+          <nav aria-label="Principal" className="hidden xl:block">
+            <ul className="flex items-center gap-1">
+              {navLinks.map((link) => {
+                const active = isActive(link.href);
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      aria-current={active ? 'page' : undefined}
+                      className={`relative inline-flex items-center min-h-11 px-3 rounded-lg whitespace-nowrap text-[0.9375rem] font-semibold transition-colors ${
+                        active ? 'text-caneta' : 'text-grafite-2 hover:text-grafite'
+                      }`}
+                    >
+                      {link.label}
+                      {active && (
+                        <motion.span
+                          layoutId="nav-ativo"
+                          className="absolute left-3 right-3 bottom-1.5 h-[3px] rounded-full bg-caneta"
+                          transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                        />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </nav>
 
-          {/* User actions */}
-          <div className="flex items-center gap-2.5">
-            {/* Caderno de Evidências button */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
+              type="button"
               onClick={() => setNotebookOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+              className="btn btn-secundario !px-3"
               aria-label="Abrir Caderno de Evidências"
             >
-              <ClipboardList className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Caderno de Evidências</span>
-              <span className="sm:hidden">Caderno</span>
+              <NotebookPen className="w-[18px] h-[18px]" aria-hidden="true" />
+              <span className="hidden sm:inline">Caderno</span>
             </button>
 
-            {/* Mobile Menu Toggle Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-              aria-label="Alternar menu de navegação"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-
-            {/* Student profile pill or Login */}
             {student ? (
               <Link
                 href="/painel"
-                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium bg-slate-900 border border-slate-700 text-slate-200 hover:border-cyan-500/60 transition-colors"
-                title={`Aluno: ${student.fullName} (${student.className})`}
+                className="hidden sm:inline-flex items-center gap-2 min-h-11 px-3 rounded-lg hover:bg-caneta-clara"
+                title={`${student.fullName} (${student.className})`}
               >
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="max-w-[80px] sm:max-w-[140px] truncate">
-                  {student.fullName.split(' ')[0]}
-                </span>
+                <span className="led led-verde" aria-hidden="true" />
+                <span className="font-semibold max-w-[9rem] truncate">{student.fullName.split(' ')[0]}</span>
                 {session && (
-                  <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/80 px-1 py-0.2 rounded border border-cyan-800/80">
+                  <span className="text-sm text-grafite-2">
+                    <span className="sr-only">, etapa </span>
                     {session.currentStage}/8
                   </span>
                 )}
               </Link>
             ) : (
-              <Link
-                href="/acesso"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white font-semibold transition-colors shadow-sm shrink-0"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Identificar Aluno</span>
+              <Link href="/acesso" className="btn btn-primario !px-3.5 whitespace-nowrap">
+                <UserRound className="w-[18px] h-[18px]" aria-hidden="true" />
+                <span className="hidden sm:inline">Identificar aluno</span>
                 <span className="sm:hidden">Entrar</span>
               </Link>
             )}
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="xl:hidden btn btn-discreto !w-11 !p-0"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="menu-movel"
+              aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
+            </button>
+
+            <div className="hidden xl:block">
+              <MotionSwitch compact reduced={reducedMotion} onToggle={toggleMotion} />
+            </div>
           </div>
         </div>
 
-        {/* Mobile Nav dropdown */}
-        {mobileMenuOpen && (
-          <nav className="md:hidden border-t border-slate-800 bg-[#0B1120] px-4 py-2 space-y-1">
-            {navLinks.map((link) => {
-              const active = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-3 py-2 rounded-md text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-slate-800 text-cyan-300 font-bold'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-        )}
+        <AnimatePresence initial={false}>
+          {mobileMenuOpen && (
+            <motion.nav
+              id="menu-movel"
+              aria-label="Principal"
+              className="xl:hidden overflow-hidden border-t border-linha bg-papel"
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 0.8, 0.2, 1] }}
+            >
+              <ul className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-1">
+                {navLinks.map((link) => {
+                  const active = isActive(link.href);
+                  return (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        aria-current={active ? 'page' : undefined}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center min-h-12 px-3 rounded-lg text-base font-semibold ${
+                          active ? 'bg-caneta-clara text-caneta' : 'text-grafite hover:bg-folha'
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+                {student && (
+                  <li className="px-3 pt-2 text-grafite-2 flex items-center gap-2">
+                    <span className="led led-verde" aria-hidden="true" />
+                    {student.fullName}
+                    {session && <span>(etapa {session.currentStage}/8)</span>}
+                  </li>
+                )}
+                <li className="pt-1">
+                  <MotionSwitch reduced={reducedMotion} onToggle={toggleMotion} />
+                </li>
+              </ul>
+            </motion.nav>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* Caderno de Evidências Drawer */}
-      <EvidenceNotebookDrawer
-        isOpen={notebookOpen}
-        onClose={() => setNotebookOpen(false)}
-      />
+      <EvidenceNotebookDrawer isOpen={notebookOpen} onClose={() => setNotebookOpen(false)} />
     </>
   );
 }

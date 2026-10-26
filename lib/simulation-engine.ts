@@ -42,12 +42,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 1,
     layerName: 'Física',
     title: 'O Sinal Desaparecido',
-    subtitle: 'Ausência de link elétrico e sinais entre o PC e o Switch',
+    subtitle: 'Onde o sinal se perde entre o computador e a rede?',
     initialProblemDescription: 'O computador do laboratório não consegue transmitir nenhum bit para a rede local. Nenhum sinal luminoso está presente no conector de rede.',
     initialTopologySymptoms: [
       'LED Link/Act da placa de rede do PC está totalmente APAGADO',
-      'Porta Fa0/1 do Switch não detecta portadora elétrica (No Carrier)',
-      'Transmissor físico não detecta pulsos de link (Fast Link Pulses ausentes)'
+      'A porta do switch ligada ao PC não detecta sinal elétrico',
+      'A placa de rede não recebe os pulsos que indicam conexão'
     ],
     initialState: {
       missionNumber: 1,
@@ -58,9 +58,9 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_link_carrier',
-        label: 'Verificar Portadora de Link (Fast Link Pulses)',
+        label: 'Verificar o sinal elétrico do link',
         category: 'fisico',
-        description: 'Mede presença de sinal de pulso elétrico no par de pinos 1-2 e 3-6 do conector RJ-45.',
+        description: 'Mede se há pulsos elétricos nos pinos 1-2 e 3-6 do conector RJ-45.',
         execute: (state) => {
           if (!state.cableConnected) {
             return {
@@ -70,7 +70,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
             };
           }
           return {
-            output: '[TESTE FÍSICO] Tensão nos pinos: 2.5V (MLT-3 detectado). Status: 1000BASE-T FULL-DUPLEX. Link ESTÁVEL.',
+            output: '[TESTE FÍSICO] Tensão nos pinos: 2.5V. Status: LINK UP a 1 Gbit/s. Link ESTÁVEL.',
             success: true,
             diagnosticCode: 'PHY_OK_LINK_UP'
           };
@@ -80,17 +80,17 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
         key: 'test_cable_continuity',
         label: 'Teste de Continuidade e Pinagem T568B',
         category: 'fisico',
-        description: 'Injeta sinal de teste pelo cabo UTP para verificar rompimento de pares.',
+        description: 'Envia um sinal de teste pelo cabo de par trançado para ver se algum par está rompido.',
         execute: (state) => {
           if (!state.cableConnected) {
             return {
-              output: '[CONTINUIDADE] Circuito ABERTO (Open Circuit) no conector. Cabo desconectado da porta RJ-45.',
+              output: '[CONTINUIDADE] Circuito ABERTO no conector: o sinal não chega ao outro lado. Cabo desconectado da porta RJ-45.',
               success: false,
               diagnosticCode: 'PHY_ERR_OPEN_CIRCUIT'
             };
           }
           return {
-            output: '[CONTINUIDADE] Pares 1-2, 3-6, 4-5, 7-8 verificados. Atenuação: 1.2 dB (dentro do padrão TIA-568B).',
+            output: '[CONTINUIDADE] Pares 1-2, 3-6, 4-5 e 7-8 verificados. Perda de sinal dentro do padrão T568B.',
             success: true,
             diagnosticCode: 'PHY_OK_CABLE_PASS'
           };
@@ -100,8 +100,8 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'reconnect_cable',
-        label: 'Conectar e Travar Cabo RJ-45 Cat6 na Porta',
-        description: 'Encaixa o conector modular RJ-45 até travar na porta física da placa de rede.',
+        label: 'Conectar e travar o cabo RJ-45 na porta',
+        description: 'Encaixa o conector RJ-45 até travar na porta da placa de rede.',
         apply: (state) => ({
           ...state,
           cableConnected: true,
@@ -118,12 +118,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 2,
     layerName: 'Enlace',
     title: 'O Caminho do Quadro',
-    subtitle: 'Comutação no enlace local e encaminhamento por tabela MAC',
-    initialProblemDescription: 'Com o link físico restabelecido, o computador envia quadros Ethernet, mas eles estão sendo descartados porque o switch não mapeou a porta de destino correta.',
+    subtitle: 'Os quadros saem do computador, mas não chegam aonde deveriam',
+    initialProblemDescription: 'Com o link físico restabelecido, o computador envia quadros Ethernet, mas eles não chegam ao destino na rede local.',
     initialTopologySymptoms: [
       'Quadro Ethernet emitido com MAC destino desconhecido',
-      'Tabela CAM (MAC Table) do switch sem entrada para o host de destino',
-      'Comutador precisa aprender o mapeamento MAC x Porta Física'
+      'A tabela MAC do switch não tem registro do computador de destino',
+      'O switch precisa aprender em qual porta está cada endereço MAC'
     ],
     initialState: {
       missionNumber: 2,
@@ -134,7 +134,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_mac_table',
-        label: 'Consultar Tabela MAC do Switch (show mac address-table)',
+        label: 'Consultar a tabela MAC do switch',
         category: 'enlace',
         description: 'Lista os endereços MAC aprendidos pelo switch e as respectivas portas.',
         execute: (state) => {
@@ -146,7 +146,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
             };
           }
           return {
-            output: '[TABELA MAC] Porta Fa0/1: 00:1A:2B:3C:4D:5E (PC) | Porta Fa0/24: A4:4C:11:89:12:01 (Gateway). Mapeado com sucesso.',
+            output: '[TABELA MAC] Porta Fa0/1: 00:1A:2B:3C:4D:5E (PC) | Porta Fa0/24: A4:4C:11:89:12:01 (roteador). Mapeado com sucesso.',
             success: true,
             diagnosticCode: 'MAC_TABLE_RESOLVED'
           };
@@ -154,19 +154,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       },
       {
         key: 'test_frame_fcs',
-        label: 'Inspecionar Cabeçalho e Trailer FCS do Quadro',
+        label: 'Inspecionar o cabeçalho e o final do quadro',
         category: 'enlace',
-        description: 'Calcula o CRC32 do quadro para verificar integridade e campos de origem/destino.',
+        description: 'Confere se o quadro chegou inteiro e quais são os endereços MAC de origem e destino.',
         execute: (state) => {
           if (!state.switchPortLearned) {
             return {
-              output: '[INSPEÇÃO DE QUADRO] EtherType: 0x0800 | FCS: Válido | Destino MAC não encontrado no segmento local.',
+              output: '[INSPEÇÃO DE QUADRO] Conteúdo: pacote IP | Verificação de erros: OK | MAC de destino não encontrado na rede local.',
               success: false,
               diagnosticCode: 'FRAME_TARGET_UNREACHABLE'
             };
           }
           return {
-            output: '[INSPEÇÃO DE QUADRO] MAC Origem: 00:1A:2B:3C:4D:5E | MAC Destino: A4:4C:11:89:12:01 | FCS: OK (Quadro íntegro).',
+            output: '[INSPEÇÃO DE QUADRO] MAC Origem: 00:1A:2B:3C:4D:5E | MAC Destino: A4:4C:11:89:12:01 | Verificação de erros: OK (quadro íntegro).',
             success: true,
             diagnosticCode: 'FRAME_SUCCESS_DELIVERED'
           };
@@ -176,8 +176,8 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'resolve_mac_mapping',
-        label: 'Disparar Resolução de Endereço Local (Mapear MAC do Gateway)',
-        description: 'Executa envio de quadro de aprendizado para que o switch registre o MAC do Gateway na porta Fa0/24.',
+        label: 'Fazer o switch aprender o MAC do roteador',
+        description: 'Envia um quadro de aprendizado para o switch registrar o MAC do roteador na porta Fa0/24.',
         apply: (state) => ({
           ...state,
           macDestination: 'A4:4C:11:89:12:01',
@@ -194,12 +194,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 3,
     layerName: 'Rede',
     title: 'O Pacote Sem Caminho',
-    subtitle: 'Roteamento inter-redes e configuração do Gateway Padrão',
+    subtitle: 'Por que o pacote não sai da rede local?',
     initialProblemDescription: 'O computador alcança outros computadores da rede local 192.168.10.0/24, mas não consegue acessar o servidor educacional na rede remota 10.0.20.10. O pacote é descartado antes de alcançar o roteador.',
     initialTopologySymptoms: [
       'Ping para 192.168.10.2 (mesma sub-rede) RESPONDE com sucesso',
       'Ping para 10.0.20.10 (rede remota) falha com "Rede de destino inacessível"',
-      'Configuração IP do PC: Gateway Padrão ausente ou configurado como 0.0.0.0'
+      'Configuração IP do PC: roteador de saída ausente (0.0.0.0)'
     ],
     initialState: {
       missionNumber: 3,
@@ -214,7 +214,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
         key: 'test_ping_local',
         label: 'Ping para Estação Local (192.168.10.2)',
         category: 'rede',
-        description: 'Testa envio de pacotes ICMP Echo Request dentro da mesma sub-rede /24.',
+        description: 'Envia pacotes de teste (ping) para um computador da mesma rede local.',
         execute: () => ({
           output: 'PING 192.168.10.2: 4 pacotes transmitidos, 4 recebidos, 0% perda de pacotes (tempo < 1ms). Comunicação local FUNCIONA.',
           success: true,
@@ -225,17 +225,17 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
         key: 'test_ping_remote',
         label: 'Ping para Servidor Remoto (10.0.20.10)',
         category: 'rede',
-        description: 'Testa envio de pacotes ICMP para sub-rede externa através do roteador.',
+        description: 'Envia pacotes de teste (ping) para o servidor, que fica em outra rede.',
         execute: (state) => {
           if (state.pcGateway !== '192.168.10.1') {
             return {
-              output: 'PING 10.0.20.10: Host 192.168.10.25 informa: Destino inacessível (No route to host / Gateway indefinido).',
+              output: 'PING 10.0.20.10: Host 192.168.10.25 informa: Destino inacessível (o PC não sabe por qual roteador sair da rede).',
               success: false,
               diagnosticCode: 'ICMP_NO_GATEWAY'
             };
           }
           return {
-            output: 'PING 10.0.20.10: Resposta de 10.0.20.10: bytes=32 tempo=12ms TTL=63 (Encaminhado pelo Gateway 192.168.10.1).',
+            output: 'PING 10.0.20.10: Resposta de 10.0.20.10: bytes=32 tempo=12ms (encaminhado pelo roteador 192.168.10.1).',
             success: true,
             diagnosticCode: 'ICMP_REMOTE_SUCCESS'
           };
@@ -243,9 +243,9 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       },
       {
         key: 'test_traceroute',
-        label: 'Rastrear Rota de Pacotes (Traceroute)',
+        label: 'Rastrear o caminho dos pacotes (traceroute)',
         category: 'rede',
-        description: 'Examina cada salto do roteador até o servidor educacional.',
+        description: 'Mostra cada equipamento por onde o pacote passa até o servidor.',
         execute: (state) => {
           if (state.pcGateway !== '192.168.10.1') {
             return {
@@ -255,7 +255,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
             };
           }
           return {
-            output: 'traceroute 10.0.20.10:\n 1  192.168.10.1 (Gateway Roteador) 1.1ms\n 2  10.0.20.10 (Servidor Educacional) 11.4ms',
+            output: 'traceroute 10.0.20.10:\n 1  192.168.10.1 (roteador de saída) 1.1ms\n 2  10.0.20.10 (Servidor Educacional) 11.4ms',
             success: true,
             diagnosticCode: 'TRACE_SUCCESS_TWO_HOPS'
           };
@@ -265,7 +265,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'set_correct_gateway',
-        label: 'Configurar Default Gateway para 192.168.10.1',
+        label: 'Configurar o roteador de saída (gateway) como 192.168.10.1',
         description: 'Define a interface do roteador local como porta de saída para todas as redes remotas.',
         apply: (state) => ({
           ...state,
@@ -282,11 +282,11 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 4,
     layerName: 'Transporte',
     title: 'A Conexão Interrompida',
-    subtitle: 'Portas lógicas e handshake de três vias (TCP SYN)',
-    initialProblemDescription: 'Os pacotes IP agora chegam ao servidor 10.0.20.10, mas a aplicação educacional recebe uma recusa imediata de conexão TCP (flag RST). O serviço não está respondendo na porta requisitada.',
+    subtitle: 'O pacote chega ao servidor, mas a conexão é recusada',
+    initialProblemDescription: 'Os pacotes IP agora chegam ao servidor 10.0.20.10, mas a aplicação educacional recebe uma recusa imediata da conexão TCP.',
     initialTopologySymptoms: [
       'Cliente tentando conexão TCP na porta de destino 8080',
-      'Servidor responde com segmento TCP contendo a flag [RST, ACK]',
+      'O servidor responde com um aviso de conexão recusada (RST)',
       'Serviço web institucional está escutando na porta padrão HTTP 80'
     ],
     initialState: {
@@ -298,19 +298,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_tcp_handshake',
-        label: 'Inspecionar 3-Way Handshake TCP (SYN → SYN-ACK → ACK)',
+        label: 'Acompanhar a abertura da conexão TCP (3 etapas)',
         category: 'transporte',
-        description: 'Registra os segmentos trocados para estabelecer o canal orientado a conexão.',
+        description: 'Mostra as mensagens que cliente e servidor trocam para abrir a conexão.',
         execute: (state) => {
           if (state.tcpPortTarget !== 80) {
             return {
-              output: 'TENTATIVA TCP Porta ' + state.tcpPortTarget + ':\n 1. [CLIENTE -> SERVIDOR] SYN seq=1000\n 2. [SERVIDOR -> CLIENTE] RST, ACK ack=1001 (Conexão rejeitada: Nenhuma aplicação escutando nesta porta).',
+              output: 'TENTATIVA TCP Porta ' + state.tcpPortTarget + ':\n 1. [CLIENTE -> SERVIDOR] pedido de conexão (SYN)\n 2. [SERVIDOR -> CLIENTE] recusa (RST): nenhum programa atende nesta porta.',
               success: false,
               diagnosticCode: 'TCP_CONNECTION_REFUSED_RST'
             };
           }
           return {
-            output: 'TENTATIVA TCP Porta 80:\n 1. [CLIENTE -> SERVIDOR] SYN seq=1000\n 2. [SERVIDOR -> CLIENTE] SYN-ACK seq=5000 ack=1001\n 3. [CLIENTE -> SERVIDOR] ACK ack=5001\n STATUS: ESTABLISHED (Canal confiável aberto).',
+            output: 'TENTATIVA TCP Porta 80:\n 1. [CLIENTE -> SERVIDOR] pedido de conexão (SYN)\n 2. [SERVIDOR -> CLIENTE] aceite (SYN-ACK)\n 3. [CLIENTE -> SERVIDOR] confirmação (ACK)\n STATUS: conexão estabelecida.',
             success: true,
             diagnosticCode: 'TCP_HANDSHAKE_ESTABLISHED'
           };
@@ -318,11 +318,11 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       },
       {
         key: 'test_netstat_services',
-        label: 'Verificar Portas em Escuta no Servidor (netstat -tuln)',
+        label: 'Ver quais portas o servidor está atendendo',
         category: 'transporte',
-        description: 'Varre os processos e portas ativas de transporte no host de destino.',
+        description: 'Lista os programas do servidor e as portas em que cada um aguarda conexões.',
         execute: () => ({
-          output: 'SERVIÇOS ATIVOS EM 10.0.20.10:\n - Proto: TCP | Porta Local: 0.0.0.0:80 | Estado: LISTEN | Processo: ifpa-web-server\n - Proto: TCP | Porta Local: 0.0.0.0:22 | Estado: LISTEN | Processo: sshd\n (Atenção: A porta 8080 não consta em LISTEN).',
+          output: 'SERVIÇOS ATIVOS EM 10.0.20.10:\n - TCP porta 80: atendendo (servidor web do IFPA)\n - TCP porta 22: atendendo (acesso remoto)\n (A porta 8080 não aparece na lista).',
           success: true,
           diagnosticCode: 'NETSTAT_PORT_80_LISTENING'
         })
@@ -332,7 +332,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       {
         key: 'change_tcp_port_80',
         label: 'Ajustar Porta de Destino do Serviço para 80 (HTTP)',
-        description: 'Configura o cliente para conectar na porta lógica correta onde o servidor web está em estado LISTEN.',
+        description: 'Faz o cliente se conectar na porta em que o servidor web realmente atende.',
         apply: (state) => ({
           ...state,
           tcpPortTarget: 80,
@@ -349,12 +349,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 5,
     layerName: 'Sessão',
     title: 'O Diálogo Perdido',
-    subtitle: 'Sincronização, manutenção de estado e renovação do token de sessão',
+    subtitle: 'O servidor responde, mas não reconhece a conversa',
     initialProblemDescription: 'A conexão TCP está estabelecida e confiável, mas as solicitações de transação do aluno são rejeitadas pelo servidor com aviso de sessão inválida ou desincronizada.',
     initialTopologySymptoms: [
       'Segmentos TCP chegam intactos e confirmados',
-      'Camada de Sessão rejeita mensagens: Token ID expirado no servidor',
-      'Necessário restabelecer o diálogo lógico e renovar o contexto de sessão'
+      'A camada de sessão rejeita as mensagens: o código da sessão expirou no servidor',
+      'É preciso retomar o diálogo e renovar a sessão'
     ],
     initialState: {
       missionNumber: 5,
@@ -370,13 +370,13 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
         execute: (state) => {
           if (state.sessionTokenStatus !== 'valido') {
             return {
-              output: '[SESSÃO OSI] Token: "SES-2026-EXPIRED". Status: DIÁLOGO RECUSADO. O tempo limite do canal expirou.',
+              output: '[SESSÃO OSI] Código da sessão: "SES-2026-EXPIRED". Status: DIÁLOGO RECUSADO. O tempo limite expirou.',
               success: false,
               diagnosticCode: 'SESSION_EXPIRED_OR_DESYNC'
             };
           }
           return {
-            output: '[SESSÃO OSI] Token: "SES-BREVES-2026-ACTIVE". Status: DIÁLOGO SINCRONIZADO. Modo: Full-Duplex coordenado.',
+            output: '[SESSÃO OSI] Código da sessão: "SES-BREVES-2026-ACTIVE". Status: DIÁLOGO SINCRONIZADO.',
             success: true,
             diagnosticCode: 'SESSION_SYNCED_OK'
           };
@@ -386,8 +386,8 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'renew_session_token',
-        label: 'Renovar e Sincronizar Token de Diálogo de Sessão',
-        description: 'Emite comando de controle de sessão para revalidar o identificador de diálogo.',
+        label: 'Renovar o código da sessão',
+        description: 'Pede ao servidor um novo código de sessão para retomar o diálogo.',
         apply: (state) => ({
           ...state,
           sessionTokenStatus: 'valido',
@@ -403,12 +403,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 6,
     layerName: 'Apresentação',
     title: 'Dados que Não Fazem Sentido',
-    subtitle: 'Sintaxe, codificação de caracteres e decodificação UTF-8',
+    subtitle: 'A página chega, mas o texto vem embaralhado',
     initialProblemDescription: 'Os dados da resposta do servidor chegam ao laboratório, porém o texto da página acadêmica é exibido com caracteres corrompidos ("AvaliaÃ§Ã£o de Redes no Campus Breves").',
     initialTopologySymptoms: [
-      'Texto recebido com erro sintático evidente (Mojibake)',
-      'Bytes originais foram gerados em UTF-8 (multibyte para caracteres especiais)',
-      'Camada de apresentação do cliente estava forçando decodificação em ISO-8859-1'
+      'O texto chega com caracteres trocados e símbolos estranhos',
+      'O servidor gerou o texto em UTF-8, que usa mais de um byte para letras acentuadas',
+      'O computador do aluno está lendo o texto em outro padrão, o ISO-8859-1'
     ],
     initialState: {
       missionNumber: 6,
@@ -418,19 +418,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_byte_charset',
-        label: 'Inspecionar Sequência Bruta de Bytes vs Decodificação',
+        label: 'Comparar os bytes recebidos com o texto exibido',
         category: 'apresentacao',
-        description: 'Exibe os bytes hexadecimais recebidos e a representação de caracteres resultante.',
+        description: 'Mostra os bytes que chegaram e como eles foram transformados em letras.',
         execute: (state) => {
           if (state.dataEncoding !== 'UTF-8') {
             return {
-              output: 'BYTES RECEBIDOS: [0x41, 0x76, 0x61, 0x6C, 0x69, 0x61, 0xC3, 0xA7, 0xC3, 0xA3, 0x6F]\n DECODIFICAÇÃO ATUAL (ISO-8859-1): "AvaliaÃ§Ã£o"\n DIAGNÓSTICO: Bytes 0xC3 0xA7 foram interpretados individualmente em vez de um único caractere "ç".',
+              output: 'BYTES RECEBIDOS: [0x41, 0x76, 0x61, 0x6C, 0x69, 0x61, 0xC3, 0xA7, 0xC3, 0xA3, 0x6F]\n DECODIFICAÇÃO ATUAL (ISO-8859-1): "AvaliaÃ§Ã£o"\n DIAGNÓSTICO: os bytes 0xC3 0xA7 viraram dois símbolos, em vez de um único "ç".',
               success: false,
               diagnosticCode: 'PRESENTATION_MOJIBAKE_DETECTED'
             };
           }
           return {
-            output: 'BYTES RECEBIDOS: [0x41, 0x76, 0x61, 0x6C, 0x69, 0x61, 0xC3, 0xA7, 0xC3, 0xA3, 0x6F]\n DECODIFICAÇÃO ATUAL (UTF-8): "Avaliação"\n DIAGNÓSTICO: Sintaxe correta. Caracteres acentuados renderizados com fidelidade semântica.',
+            output: 'BYTES RECEBIDOS: [0x41, 0x76, 0x61, 0x6C, 0x69, 0x61, 0xC3, 0xA7, 0xC3, 0xA3, 0x6F]\n DECODIFICAÇÃO ATUAL (UTF-8): "Avaliação"\n DIAGNÓSTICO: texto correto, com acentos exibidos normalmente.',
             success: true,
             diagnosticCode: 'PRESENTATION_UTF8_RESOLVED'
           };
@@ -440,8 +440,8 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'set_encoding_utf8',
-        label: 'Ajustar Decodificador da Camada de Apresentação para UTF-8',
-        description: 'Alinha a tabela de tradução sintática para que a sequência multibyte Unicode seja interpretada corretamente.',
+        label: 'Ler o texto no padrão UTF-8',
+        description: 'Ajusta a camada de apresentação para traduzir os bytes no mesmo padrão usado pelo servidor.',
         apply: (state) => ({
           ...state,
           dataEncoding: 'UTF-8',
@@ -457,11 +457,11 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 7,
     layerName: 'Aplicação',
     title: 'O Recurso Indisponível',
-    subtitle: 'Protocolo HTTP e requisição do recurso correto',
+    subtitle: 'O servidor responde, mas não entrega a página pedida',
     initialProblemDescription: 'Toda a infraestrutura de rede, transporte, sessão e apresentação está operacional. O navegador simulado envia a requisição HTTP GET para "/notas.html", mas o servidor responde com código 404 Not Found.',
     initialTopologySymptoms: [
       'Conexão nas camadas 1 a 6 bem-sucedida',
-      'Resposta HTTP recebida: Status Code 404 Not Found',
+      'Resposta HTTP recebida: código 404 Not Found (não encontrado)',
       'O documento acadêmico oficial no servidor chama-se "/boletim.html"'
     ],
     initialState: {
@@ -472,19 +472,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_http_request',
-        label: 'Emitir Requisição HTTP GET e Inspecionar Resposta',
+        label: 'Enviar o pedido HTTP e ver a resposta',
         category: 'aplicacao',
-        description: 'Envia cabeçalho HTTP completo e recebe a resposta com código de status e payload.',
+        description: 'Pede a página ao servidor e mostra o código de resposta e o conteúdo recebido.',
         execute: (state) => {
           if (state.targetResourceUri !== '/boletim.html') {
             return {
-              output: 'HTTP/1.1 404 Not Found\n Content-Type: text/html\n Server: IFPA-Web/2.4\n Payload: <h1>404 Recurso Não Encontrado: ' + state.targetResourceUri + '</h1>\n (A comunicação de rede funcionou, mas o recurso solicitado não existe no servidor).',
+              output: 'HTTP/1.1 404 Not Found\n Content-Type: text/html\n Server: IFPA-Web/2.4\n Conteúdo: <h1>404 Recurso Não Encontrado: ' + state.targetResourceUri + '</h1>\n (A comunicação de rede funcionou, mas o recurso solicitado não existe no servidor).',
               success: false,
               diagnosticCode: 'HTTP_404_NOT_FOUND'
             };
           }
           return {
-            output: 'HTTP/1.1 200 OK\n Content-Type: text/html; charset=UTF-8\n Content-Length: 1420\n Payload: <h1>Portal do Aluno - Boletim Oficial do IFPA Campus Breves</h1><p>Situação: Regular</p>',
+            output: 'HTTP/1.1 200 OK\n Content-Type: text/html; charset=UTF-8\n Content-Length: 1420\n Conteúdo: <h1>Portal do Aluno - Boletim Oficial do IFPA Campus Breves</h1><p>Situação: Regular</p>',
             success: true,
             diagnosticCode: 'HTTP_200_OK'
           };
@@ -494,7 +494,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
         key: 'test_directory_listing',
         label: 'Consultar Lista de Recursos Disponíveis no Servidor',
         category: 'aplicacao',
-        description: 'Verifica o índice de páginas públicas disponibilizadas pela aplicação web.',
+        description: 'Mostra a lista de páginas que o servidor web oferece.',
         execute: () => ({
           output: 'ÍNDICE DE ARQUIVOS EM /var/www/html/:\n - /index.html (Página Principal)\n - /boletim.html (Boletim e Avaliações de Redes)\n - /calendario.html (Calendário Acadêmico)',
           success: true,
@@ -505,8 +505,8 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     interventions: [
       {
         key: 'fix_resource_uri',
-        label: 'Corrigir URI da Requisição para "/boletim.html"',
-        description: 'Atualiza o caminho no comando HTTP GET para o recurso existente no catálogo da aplicação.',
+        label: 'Corrigir o endereço da página para "/boletim.html"',
+        description: 'Troca o endereço pedido no HTTP pela página que existe no servidor.',
         apply: (state) => ({
           ...state,
           targetResourceUri: '/boletim.html',
@@ -522,12 +522,12 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     layerNumber: 0, // Integrador
     layerName: 'Integração Final',
     title: 'Desafio Integrador Multicamada',
-    subtitle: 'Diagnóstico cruzado: Falha de Transporte e de Apresentação em nova estação',
-    initialProblemDescription: 'Uma segunda estação de trabalho do laboratório (PC-2: 192.168.10.30) alcança o roteador, mas não consegue acessar a API de notas por falha de porta lógica. E após ajustar a porta, o payload retornado sofre de incompatibilidade de codificação.',
+    subtitle: 'Uma nova estação e mais de uma falha no caminho',
+    initialProblemDescription: 'Uma segunda estação de trabalho do laboratório (PC-2: 192.168.10.30) alcança o roteador, mas não consegue usar o sistema de notas. Mais de uma camada pode estar envolvida.',
     initialTopologySymptoms: [
-      'Estação PC-2 tentando conectar na porta TCP 443 em servidor sem TLS configurado',
-      'Servidor responde com TCP RST na porta 443; serviço está na porta 80',
-      'Conteúdo da API usa charset UTF-8 mas PC-2 foi pré-configurado com codificação ASCII pura'
+      'O PC-2 tenta se conectar na porta TCP 443, que o servidor não atende',
+      'O servidor recusa a conexão na porta 443; o serviço está na porta 80',
+      'O sistema de notas envia texto em UTF-8, mas o PC-2 está configurado para ler só ASCII (sem acentos)'
     ],
     initialState: {
       missionNumber: 8,
@@ -538,19 +538,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
     availableTests: [
       {
         key: 'test_diag_pc2_transport',
-        label: 'Diagnóstico L4: Testar Conexão TCP do PC-2',
+        label: 'Camada 4: testar a conexão TCP do PC-2',
         category: 'transporte',
-        description: 'Envia SYN na porta configurada para o PC-2.',
+        description: 'Tenta abrir uma conexão na porta configurada no PC-2.',
         execute: (state) => {
           if (!state.secondaryServicePortOk) {
             return {
-              output: '[PC-2 TCP DIAG] Enviando SYN para 10.0.20.10:443 -> Recebido TCP RST. Porta 443 não possui listener ativo.',
+              output: '[PC-2 TCP] Pedido de conexão para 10.0.20.10:443 -> recusado (RST). Nenhum programa atende na porta 443.',
               success: false,
               diagnosticCode: 'INT_L4_FAIL'
             };
           }
           return {
-            output: '[PC-2 TCP DIAG] Enviando SYN para 10.0.20.10:80 -> Recebido SYN-ACK. Conexão TCP ESTABLISHED na Camada 4.',
+            output: '[PC-2 TCP] Pedido de conexão para 10.0.20.10:80 -> aceito. Conexão TCP estabelecida na camada 4.',
             success: true,
             diagnosticCode: 'INT_L4_OK'
           };
@@ -558,19 +558,19 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       },
       {
         key: 'test_diag_pc2_presentation',
-        label: 'Diagnóstico L6: Inspecionar Decodificação de Caracteres no PC-2',
+        label: 'Camada 6: ver como o PC-2 lê os caracteres',
         category: 'apresentacao',
         description: 'Verifica se os bytes da resposta são interpretados corretamente.',
         execute: (state) => {
           if (!state.secondaryEncodingOk) {
             return {
-              output: '[PC-2 L6 DIAG] Caracteres fora da tabela ASCII 7 bits são descartados ou substituídos por ponto de interrogação (????).',
+              output: '[PC-2 CAMADA 6] Letras acentuadas não existem na tabela ASCII e aparecem como pontos de interrogação (????).',
               success: false,
               diagnosticCode: 'INT_L6_FAIL'
             };
           }
           return {
-            output: '[PC-2 L6 DIAG] Codificação ajustada para UTF-8. Acentuação e pontuação corretas.',
+            output: '[PC-2 CAMADA 6] Leitura ajustada para UTF-8. Acentuação e pontuação corretas.',
             success: true,
             diagnosticCode: 'INT_L6_OK'
           };
@@ -590,7 +590,7 @@ export const MISSIONS_CONFIG: Record<number, MissionDefinition> = {
       },
       {
         key: 'fix_pc2_encoding',
-        label: 'Habilitar UTF-8 no Cliente PC-2 (Camada 6 - Apresentação)',
+        label: 'Ler o texto em UTF-8 no PC-2 (Camada 6 - Apresentação)',
         description: 'Configura o decodificador para suporte completo aos acentos do idioma português.',
         apply: (state) => {
           const next = { ...state, secondaryEncodingOk: true };
@@ -650,7 +650,7 @@ export function calculateRubricScore(params: {
     },
     hipoteses: {
       criterionKey: 'hipoteses',
-      title: 'Formulação de Hipóteses',
+      title: 'Formulação de Suspeitas',
       maxScore: 2.0,
       autoScore: autoHipoteses,
       status: 'auto'

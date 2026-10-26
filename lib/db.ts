@@ -45,10 +45,29 @@ async function seedMissions(pool: mysql.Pool): Promise<void> {
   }
 }
 
+// Columns added after the first deploy: CREATE TABLE IF NOT EXISTS does not add them to existing tables.
+const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
+  ['missoes', 'disponivel', 'TINYINT(1) NOT NULL DEFAULT 1'],
+  ['missoes', 'disponibilidade_alterada_em', 'DATETIME(3) NULL'],
+];
+
+async function addMissingColumns(pool: mysql.Pool): Promise<void> {
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    const [rows] = await pool.query<mysql.RowDataPacket[]>(
+      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column]
+    );
+    if (rows.length === 0) {
+      await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+}
+
 async function createSchema(pool: mysql.Pool): Promise<void> {
   for (const statement of SCHEMA_STATEMENTS) {
     await pool.query(statement);
   }
+  await addMissingColumns(pool);
   await seedMissions(pool);
   await migrateLegacyTables(pool);
 }

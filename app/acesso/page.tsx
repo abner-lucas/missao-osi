@@ -2,16 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  User,
-  GraduationCap,
-  ArrowRight,
-  RotateCcw,
-  Shield,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
+import { RotateCcw, AlertCircle, ShieldCheck } from 'lucide-react';
 import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 import { createOrResumeStudentSession, getActiveStudent, getActiveSession, clearActiveStudentSession } from '@/lib/storage';
 
 export default function AcessoPage() {
@@ -69,121 +62,95 @@ export default function AcessoPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1120]">
+    <div className="min-h-screen flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-xl mx-auto px-4 py-12 w-full flex flex-col justify-center">
-        <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800 flex items-center justify-center mx-auto">
-              <User className="w-6 h-6" />
-            </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              Identificação do Estudante
-            </h1>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Atividade avaliativa de Redes de Computadores no IFPA Campus Breves.
+      <main id="conteudo" className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-16 grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-start">
+        <div className="lg:pt-4">
+          <h1 className="text-[clamp(2.2rem,5vw,3.5rem)] font-extrabold [font-stretch:78%] leading-[1.04]">
+            Quem vai investigar?
+          </h1>
+          <p className="mt-4 text-lg text-grafite-2 max-w-md">
+            Seu nome aparece no relatório final e no painel do professor. Use o nome completo, como na chamada.
+          </p>
+          <div className="mt-8 flex gap-3 max-w-md text-grafite-2">
+            <ShieldCheck className="w-6 h-6 text-ok shrink-0 mt-0.5" aria-hidden="true" />
+            <p>
+              <strong className="text-grafite">Só nome e turma.</strong> Nada de CPF, e-mail ou outros dados pessoais. As
+              informações servem apenas para acompanhar a atividade e atribuir a nota (LGPD).
             </p>
           </div>
+        </div>
 
-          {/* Existing Session Alert if found */}
+        <div className="folha p-6 sm:p-8 space-y-6">
           {existingStudent && existingSession && (
-            <div className="p-4 rounded-xl bg-slate-900 border border-slate-700/80 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Sessão em Andamento Detectada
-                </span>
-                <span className="font-mono text-[11px] text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
-                  Etapa {existingSession.currentStage}/8
-                </span>
+            <section aria-labelledby="titulo-retomar" className="rounded-xl bg-ok-fundo border border-ok/25 p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <span className="led led-verde mt-2" aria-hidden="true" />
+                <div>
+                  <h2 id="titulo-retomar" className="text-xl font-extrabold">
+                    Você já começou como {existingStudent.fullName}
+                  </h2>
+                  <p className="text-grafite-2 mt-1">Seu progresso está na etapa {existingSession.currentStage} de 8.</p>
+                </div>
               </div>
-              <p className="text-xs text-slate-300">
-                Você já possui progresso gravado como <strong>{existingStudent.fullName}</strong>.
-              </p>
               <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={handleResumeExisting}
-                  className="flex-1 py-2.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Retomar Onde Parei</span>
+                <button type="button" onClick={handleResumeExisting} className="btn btn-sucesso flex-1">
+                  <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                  Retomar de onde parei
                 </button>
-                <button
-                  type="button"
-                  onClick={handleStartNewStudent}
-                  className="py-2.5 px-3 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                >
-                  Sou Outro Aluno
+                <button type="button" onClick={handleStartNewStudent} className="btn btn-secundario">
+                  Sou outro aluno
                 </button>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleStartSession} className="space-y-4">
+          <form onSubmit={handleStartSession} className="space-y-5" noValidate>
             {error && (
-              <div className="p-3 rounded-lg bg-red-950/80 border border-red-800 text-xs text-red-200 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <div role="alert" className="rounded-xl bg-erro-fundo border border-erro/30 p-4 text-erro flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>{error}</span>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label htmlFor="student-name" className="block text-xs font-semibold text-slate-200">
-                Nome Completo do Estudante <span className="text-red-400">*</span>
+            <div>
+              <label htmlFor="student-name" className="rotulo">
+                Nome completo <span aria-hidden="true" className="text-erro">*</span>
               </label>
               <input
                 id="student-name"
                 type="text"
                 required
+                aria-required="true"
+                aria-invalid={Boolean(error)}
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Ex: Carlos Eduardo de Oliveira"
-                className="w-full p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="campo"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="student-class" className="block text-xs font-semibold text-slate-200">
-                Turma / Campus
+            <div>
+              <label htmlFor="student-class" className="rotulo">
+                Turma
               </label>
-              <select
-                id="student-class"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-                className="w-full p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-cyan-500 transition-colors"
-              >
+              <select id="student-class" value={className} onChange={(e) => setClassName(e.target.value)} className="campo">
                 <option value="1º Ano Informática Integrado - Breves">1º Ano Informática Integrado - Campus Breves</option>
                 <option value="Turma A - Redes de Computadores">Turma A - Redes de Computadores</option>
                 <option value="Turma B - Redes de Computadores">Turma B - Redes de Computadores</option>
               </select>
             </div>
 
-            {/* Privacy note */}
-            <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-              <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
-                <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Finalidade Pedagógica e Privacidade (LGPD)</span>
-              </div>
-              <p>
-                Apenas seu nome e turma são coletados para acompanhamento e atribuição da nota pelo professor. Nenhum dado pessoal desnecessário (como CPF ou e-mail) é solicitado.
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-lg text-sm font-bold bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 text-white transition-colors flex items-center justify-center gap-2 shadow-sm"
-            >
-              <span>{existingStudent ? 'Atualizar e Continuar' : 'Iniciar Minha Sessão'}</span>
-              <ArrowRight className="w-4 h-4" />
+            <button type="submit" disabled={loading} className="btn btn-primario w-full !min-h-12 !text-base">
+              {existingStudent ? 'Atualizar e continuar' : 'Iniciar minha sessão'}
             </button>
           </form>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -42,13 +42,13 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
     color: '#3B82F6', // Blue
     badgeBg: 'bg-blue-500/10 text-blue-700 border-blue-300 dark:border-blue-800 dark:text-blue-300',
     protocols: ['HTTP', 'HTTPS', 'DNS', 'FTP', 'SMTP', 'POP3', 'IMAP', 'SSH', 'TELNET', 'SIP'],
-    devices: ['Servidores Web / Arquivos', 'Gateways de Aplicação', 'Proxy / WAF', 'Navegadores e Clientes'],
+    devices: ['Servidores Web / Arquivos', 'Intermediários de Aplicação', 'Proxy / WAF', 'Navegadores e Clientes'],
     standards: ['RFC 9110 (HTTP)', 'RFC 1035 (DNS)', 'RFC 5321 (SMTP)'],
     keyConcepts: [
       {
         id: 'l7-client-server',
         title: 'Comunicação Cliente-Servidor e Requisições',
-        description: 'A aplicação cliente envia uma requisição estruturada com métodos (GET, POST) solicitando um recurso específico, e o servidor responde com código de status e payload.',
+        description: 'A aplicação cliente envia uma requisição estruturada com métodos (GET, POST) solicitando um recurso específico, e o servidor responde com um código de status e o conteúdo pedido.',
         realWorldExample: 'Ao acessar https://ifpa.edu.br/portal, o navegador emite um GET HTTP e processa o código retornado.'
       },
       {
@@ -79,8 +79,8 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
     keyConcepts: [
       {
         id: 'l6-encoding',
-        title: 'Codificação de Caracteres e Mojibake',
-        description: 'Se a origem envia bytes codificados em UTF-8 (multibyte para acentos) e o receptor interpreta em ISO-8859-1 (single-byte), os acentos viram símbolos ilegíveis.',
+        title: 'Codificação de Caracteres e Texto Embaralhado',
+        description: 'Se a origem envia o texto em UTF-8 (que usa mais de um byte para letras acentuadas) e o receptor lê em ISO-8859-1 (um byte por letra), os acentos viram símbolos ilegíveis.',
         realWorldExample: 'A palavra "Apresentação" sendo exibida como "ApresentaÃ§Ã£o" por incompatibilidade de charset.'
       },
       {
@@ -143,7 +143,7 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
       },
       {
         id: 'l4-three-way-handshake',
-        title: 'Three-Way Handshake TCP (SYN → SYN-ACK → ACK)',
+        title: 'Abertura da Conexão TCP em 3 Etapas',
         description: 'Mecanismo de três vias que sincroniza os números de sequência inicial e aloca buffers nos dois lados antes da troca de dados confiáveis.',
         realWorldExample: 'Cliente envia SYN(seq=100), Servidor responde SYN-ACK(seq=300, ack=101), Cliente confirma com ACK(ack=301).'
       },
@@ -175,9 +175,9 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
       },
       {
         id: 'l3-default-gateway',
-        title: 'Gateway Padrão (Default Gateway)',
-        description: 'Endereço do roteador na rede local para onde todo o tráfego destinado a redes externas deve ser encaminhado. Sem gateway válido, pacotes externos são descartados localmente.',
-        realWorldExample: 'Se o PC tem IP 192.168.10.25/24, o gateway deve ser a interface do roteador local (ex: 192.168.10.1).'
+        title: 'Roteador de Saída (Gateway Padrão)',
+        description: 'Endereço do roteador na rede local para onde todo o tráfego destinado a redes externas deve ser encaminhado. Sem esse endereço configurado, os pacotes para outras redes são descartados no próprio computador.',
+        realWorldExample: 'Se o PC tem IP 192.168.10.25/24, o roteador de saída deve ser o endereço do roteador da sala (ex: 192.168.10.1).'
       },
       {
         id: 'l3-routing-table',
@@ -213,9 +213,9 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
       },
       {
         id: 'l2-fcs-errors',
-        title: 'Campos do Quadro e Verificação FCS (Trailer)',
-        description: 'O quadro Ethernet encapsula o pacote IP e adiciona cabeçalho (Preâmbulo, MAC Origem, MAC Destino, EtherType) e cauda com FCS (CRC32) para detecção de corrupção.',
-        realWorldExample: 'Se um bit é alterado pelo ruído no cabo, o cálculo do FCS falha e o quadro é descartado.'
+        title: 'Campos do Quadro e Verificação de Erros',
+        description: 'O quadro Ethernet envolve o pacote IP: no início vão os endereços MAC de origem e destino, e no final vai um código de verificação que detecta se algum bit foi corrompido.',
+        realWorldExample: 'Se um bit é alterado pelo ruído no cabo, a verificação falha e o quadro é descartado.'
       }
     ]
   },
@@ -240,7 +240,7 @@ export const OSI_LAYERS_DATA: LayerInfo[] = [
       {
         id: 'l1-link-status',
         title: 'Indicador de Link Físico (LEDs de Conexão)',
-        description: 'Os transceptores da placa de rede e da porta do switch emitem pulsos de link (Fast Link Pulses). Sem cabo funcional conectado, o LED de link permanece apagado e bits não trafegam.',
+        description: 'Os transceptores da placa de rede e da porta do switch emitem pulsos de link. Sem cabo funcional conectado, o LED de link permanece apagado e bits não trafegam.',
         realWorldExample: 'Cabo desconectado ou rompido internamente resulta em LED Link/Act totalmente apagado.'
       },
       {
@@ -270,23 +270,23 @@ export const ENCAPSULATION_STEPS = [
     stage: 'Apresentação (L6)',
     layerNumber: 6,
     pduName: 'Dados Formatados',
-    addedHeader: 'Formatação Sintática (Charset UTF-8 / MIME / TLS)',
+    addedHeader: 'Formato e codificação dos dados (UTF-8)',
     description: 'Os dados recebem codificação padronizada para interpretação universal.',
     fields: [
-      { name: 'Charset', value: 'UTF-8' },
-      { name: 'Content-Type', value: 'application/json' },
-      { name: 'Compressão', value: 'None (didático)' }
+      { name: 'Codificação', value: 'UTF-8' },
+      { name: 'Tipo de conteúdo', value: 'application/json' },
+      { name: 'Compressão', value: 'Nenhuma (didático)' }
     ]
   },
   {
     stage: 'Sessão (L5)',
     layerNumber: 5,
     pduName: 'Dados com Contexto de Sessão',
-    addedHeader: 'Controle de Diálogo / Token de Sessão',
+    addedHeader: 'Controle do diálogo e código da sessão',
     description: 'Marcação do canal e identificador de continuidade entre as pontas.',
     fields: [
-      { name: 'Session-ID', value: 'SES-BREVES-2026-99A' },
-      { name: 'Modo de Diálogo', value: 'Two-Way Alternate / Simplex Request' }
+      { name: 'Código da sessão', value: 'SES-BREVES-2026-99A' },
+      { name: 'Modo de Diálogo', value: 'Pergunta e resposta, um de cada vez' }
     ]
   },
   {
@@ -306,12 +306,12 @@ export const ENCAPSULATION_STEPS = [
     stage: 'Rede (L3)',
     layerNumber: 3,
     pduName: 'Pacote IP',
-    addedHeader: 'Cabeçalho IP (IP Origem + IP Destino + TTL + Protocol)',
+    addedHeader: 'Cabeçalho IP (IP de origem + IP de destino + tempo de vida + protocolo)',
     description: 'Insere o endereçamento lógico global para roteamento entre redes.',
     fields: [
       { name: 'IP Origem', value: '192.168.10.25 (PC do Aluno)' },
       { name: 'IP Destino', value: '10.0.20.10 (Servidor IFPA)' },
-      { name: 'TTL', value: '64' },
+      { name: 'Tempo de vida (saltos)', value: '64' },
       { name: 'Protocolo L4', value: '6 (TCP)' }
     ]
   },
@@ -319,13 +319,13 @@ export const ENCAPSULATION_STEPS = [
     stage: 'Enlace (L2)',
     layerNumber: 2,
     pduName: 'Quadro Ethernet (Frame)',
-    addedHeader: 'Cabeçalho Ethernet (MAC Origem + MAC Destino) + Trailer FCS',
+    addedHeader: 'Cabeçalho Ethernet (MAC de origem + MAC de destino) + verificação de erros no final',
     description: 'Encapsula o pacote com endereços físicos locais e cauda de detecção de erros.',
     fields: [
       { name: 'MAC Origem', value: '00:1A:2B:3C:4D:5E (NIC Aluno)' },
-      { name: 'MAC Destino', value: 'A4:4C:11:89:12:01 (Gateway Roteador)' },
-      { name: 'EtherType', value: '0x0800 (IPv4)' },
-      { name: 'Trailer FCS', value: '0x3F9A1B22 (CRC32)' }
+      { name: 'MAC Destino', value: 'A4:4C:11:89:12:01 (roteador)' },
+      { name: 'Conteúdo do quadro', value: 'Pacote IPv4' },
+      { name: 'Verificação de erros', value: '0x3F9A1B22' }
     ]
   },
   {
@@ -335,9 +335,9 @@ export const ENCAPSULATION_STEPS = [
     addedHeader: 'Codificação Elétrica / Sinais (Preâmbulo 10101010...)',
     description: 'Converte os bits do quadro em sinais físicos transmitidos pelo cabo UTP.',
     fields: [
-      { name: 'Sinalização', value: 'Tensão diferencial MLT-3 / Manchester' },
-      { name: 'Meio Físico', value: 'Cabo Par Trançado Cat6 UTP 1000BASE-T' },
-      { name: 'Conector', value: 'RJ-45 8P8C' }
+      { name: 'Sinalização', value: 'Variações de tensão elétrica no cabo' },
+      { name: 'Meio Físico', value: 'Cabo de par trançado UTP Cat6' },
+      { name: 'Conector', value: 'RJ-45 (8 pinos)' }
     ]
   }
 ];

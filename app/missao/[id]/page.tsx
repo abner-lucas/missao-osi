@@ -4,6 +4,7 @@ import React from 'react';
 import { notFound } from 'next/navigation';
 import Header from '@/components/Header';
 import MissionShell from '@/components/MissionShell';
+import Footer from '@/components/Footer';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -25,12 +26,13 @@ export default function MissionPage({ params }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1120]">
+    <div className="min-h-screen flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 space-y-8 w-full">
+      <main id="conteudo" className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <MissionShell missionNumber={missionNumber} />
       </main>
+      <Footer />
     </div>
   );
 }

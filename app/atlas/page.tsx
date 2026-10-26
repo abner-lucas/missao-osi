@@ -2,32 +2,25 @@
 
 import React from 'react';
 import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 import AtlasView from '@/components/AtlasView';
-import { BookOpen } from 'lucide-react';
 
 export default function AtlasPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1120]">
+    <div className="min-h-screen flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 space-y-6 w-full">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-800 mb-2">
-              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-              <span>MAPA MENTAL DE REFERÊNCIA</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Atlas OSI — Modelo de Interconexão de Sistemas Abertos
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-              Consulte as 7 camadas, PDUs, padrões internacionais (ISO, IEEE, ABNT), protocolos e simulação de encapsulamento.
-            </p>
-          </div>
+      <main id="conteudo" className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        <div className="max-w-3xl">
+          <h1 className="text-[clamp(2.2rem,5vw,3.5rem)] font-extrabold [font-stretch:78%] leading-[1.04]">Atlas OSI</h1>
+          <p className="mt-3 text-lg text-grafite-2">
+            Consulta livre, a qualquer momento: as sete camadas, como os dados são encapsulados e quem define as normas.
+          </p>
         </div>
-
         <AtlasView />
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -1,31 +1,38 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  X,
-  ClipboardList,
-  Lightbulb,
-  FlaskConical,
-  BookOpen,
-  CheckCircle2,
-  FileText,
-  Clock,
-  Award
-} from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Lightbulb, FlaskConical, BookOpen, FileText, Award } from 'lucide-react';
 import { getEvidenceNotebook, getActiveSession } from '@/lib/storage';
 import { EvidenceNotebook, ActivitySession } from '@/lib/types';
 import { OSI_LAYERS_DATA } from '@/lib/atlas-data';
 import { calculateRubricScore, getTotalScore } from '@/lib/simulation-engine';
+import { wireBackground } from '@/lib/wires';
+import Dialog from './Dialog';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type Tab = 'hipoteses' | 'testes' | 'conceitos' | 'justificativas' | 'rubrica';
+
+function Empty({ icon: Icon, children }: { icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border-2 border-dashed border-linha-forte bg-folha/80 p-6 text-center text-grafite-2">
+      <Icon className="w-8 h-8 mx-auto mb-2 text-grafite-3" />
+      <p className="max-w-sm mx-auto">{children}</p>
+    </div>
+  );
+}
+
+const time = (iso?: string) =>
+  iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Recente';
+
 export default function EvidenceNotebookDrawer({ isOpen, onClose }: Props) {
-  const [tab, setTab] = useState<'hipoteses' | 'testes' | 'conceitos' | 'justificativas' | 'rubrica'>('hipoteses');
+  const [tab, setTab] = useState<Tab>('hipoteses');
   const [notebook, setNotebook] = useState<EvidenceNotebook | null>(null);
   const [session, setSession] = useState<ActivitySession | null>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (isOpen) {
@@ -33,8 +40,6 @@ export default function EvidenceNotebookDrawer({ isOpen, onClose }: Props) {
       setSession(getActiveSession());
     }
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const currentNotebook: EvidenceNotebook = notebook || {
     hypotheses: [],
@@ -53,294 +58,208 @@ export default function EvidenceNotebookDrawer({ isOpen, onClose }: Props) {
 
   const totalScore = getTotalScore(rubric);
 
+  const tabs: { key: Tab; label: string; count: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { key: 'hipoteses', label: 'Suspeitas', count: String(currentNotebook.hypotheses.length), icon: Lightbulb },
+    { key: 'testes', label: 'Testes', count: String(currentNotebook.tests.length), icon: FlaskConical },
+    { key: 'conceitos', label: 'Conceitos', count: String(currentNotebook.savedConceptIds.length), icon: BookOpen },
+    { key: 'justificativas', label: 'Consolidações', count: String(Object.keys(currentNotebook.consolidations).length), icon: FileText },
+    { key: 'rubrica', label: 'Rubrica', count: `${totalScore}/10`, icon: Award },
+  ];
+
+  // Arrow keys move between tabs (WAI-ARIA tabs pattern)
+  const onTabKey = (e: React.KeyboardEvent, index: number) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const next =
+      e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    setTab(tabs[next].key);
+    tabRefs.current[tabs[next].key]?.focus();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end transition-opacity" role="dialog" aria-modal="true" aria-labelledby="notebook-title">
-      <div className="w-full max-w-2xl bg-[#0F172A] border-l border-slate-800 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
-        {/* Drawer Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#0B1120]">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30">
-              <ClipboardList className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 id="notebook-title" className="text-base font-bold text-white tracking-tight">
-                Caderno de Evidências do Aluno
-              </h2>
-              <p className="text-xs text-slate-400">
-                Registro contínuo de observações, testes, hipóteses e justificativas
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            aria-label="Fechar Caderno de Evidências"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-800 bg-[#0A0F1D] px-3 gap-1 overflow-x-auto text-xs">
-          <button
-            onClick={() => setTab('hipoteses')}
-            className={`py-2.5 px-3 border-b-2 font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-              tab === 'hipoteses'
-                ? 'border-cyan-400 text-cyan-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-            <span>Hipóteses ({currentNotebook.hypotheses.length})</span>
-          </button>
-          <button
-            onClick={() => setTab('testes')}
-            className={`py-2.5 px-3 border-b-2 font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-              tab === 'testes'
-                ? 'border-cyan-400 text-cyan-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FlaskConical className="w-3.5 h-3.5 text-blue-400" />
-            <span>Testes ({currentNotebook.tests.length})</span>
-          </button>
-          <button
-            onClick={() => setTab('conceitos')}
-            className={`py-2.5 px-3 border-b-2 font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-              tab === 'conceitos'
-                ? 'border-cyan-400 text-cyan-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Conceitos Atlas ({currentNotebook.savedConceptIds.length})</span>
-          </button>
-          <button
-            onClick={() => setTab('justificativas')}
-            className={`py-2.5 px-3 border-b-2 font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-              tab === 'justificativas'
-                ? 'border-cyan-400 text-cyan-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-purple-400" />
-            <span>Consolidações ({Object.keys(currentNotebook.consolidations).length})</span>
-          </button>
-          <button
-            onClick={() => setTab('rubrica')}
-            className={`py-2.5 px-3 border-b-2 font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-              tab === 'rubrica'
-                ? 'border-cyan-400 text-cyan-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Award className="w-3.5 h-3.5 text-yellow-400" />
-            <span>Rubrica ({totalScore}/10)</span>
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {tab === 'hipoteses' && (
-            <div className="space-y-3">
-              {currentNotebook.hypotheses.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-800 rounded-lg text-slate-400 text-sm">
-                  <Lightbulb className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  Nenhuma hipótese formulada ainda. Ao iniciar uma missão, você poderá registrar suas deduções sobre as falhas.
-                </div>
-              ) : (
-                currentNotebook.hypotheses.map((h, i) => (
-                  <div key={h.id || i} className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span className="font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
-                        Missão {h.missionNumber}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {h.createdAt ? new Date(h.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Recente'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-200 font-medium">
-                      "{h.statement}"
-                    </p>
-                    {h.selectedConceptIds && h.selectedConceptIds.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {h.selectedConceptIds.map((cid) => (
-                          <span key={cid} className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                            #{cid}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {tab === 'testes' && (
-            <div className="space-y-3">
-              {currentNotebook.tests.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-800 rounded-lg text-slate-400 text-sm">
-                  <FlaskConical className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  Nenhum teste de diagnóstico executado ainda. Escolha um teste durante o Momento D da sua investigação.
-                </div>
-              ) : (
-                currentNotebook.tests.map((t, i) => (
-                  <div key={t.id || i} className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-200 text-sm">
-                        {t.testName}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded font-mono text-[11px] border ${
-                        t.success
-                          ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
-                          : 'bg-amber-950 text-amber-300 border-amber-800'
-                      }`}>
-                        {t.success ? 'Conexão OK' : 'Falha Detectada'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
-                      <div className="p-2 rounded bg-slate-950/70 border border-slate-800">
-                        <span className="text-slate-400 block mb-0.5">Previsão do Aluno:</span>
-                        <span className="text-slate-300 italic">{t.predictedResult || 'Não informada'}</span>
-                      </div>
-                      <div className="p-2 rounded bg-slate-950/70 border border-slate-800">
-                        <span className="text-slate-400 block mb-0.5">Interpretação:</span>
-                        <span className="text-slate-200">{t.interpretation || 'Pendente'}</span>
-                      </div>
-                    </div>
-                    <div className="p-2 rounded bg-slate-950 font-mono text-slate-300 text-[11px] whitespace-pre-wrap border border-slate-800/80">
-                      {t.actualResult}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {tab === 'conceitos' && (
-            <div className="space-y-3">
-              {currentNotebook.savedConceptIds.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-800 rounded-lg text-slate-400 text-sm">
-                  <BookOpen className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  Nenhum conceito salvo ainda. Acesse o <strong>Atlas OSI</strong> e clique em <em>"Adicionar ao Caderno"</em> para fundamentar suas análises.
-                </div>
-              ) : (
-                currentNotebook.savedConceptIds.map((cid) => {
-                  let foundConcept: { id: string; title: string; description: string; realWorldExample: string } | undefined;
-                  let foundLayer = 0;
-                  for (const l of OSI_LAYERS_DATA) {
-                    const c = l.keyConcepts.find(k => k.id === cid);
-                    if (c) {
-                      foundConcept = c;
-                      foundLayer = l.number;
-                      break;
-                    }
-                  }
-                  if (!foundConcept) {
-                    return (
-                      <div key={cid} className="p-3 rounded bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono">
-                        Conceito: #{cid}
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={cid} className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-white text-sm">
-                          {foundConcept.title}
-                        </span>
-                        <span className="font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 text-[10px]">
-                          Camada {foundLayer}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-300">
-                        {foundConcept.description}
-                      </p>
-                      <p className="text-[11px] text-slate-400 italic">
-                        Exemplo prático: {foundConcept.realWorldExample}
-                      </p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {tab === 'justificativas' && (
-            <div className="space-y-3">
-              {Object.keys(currentNotebook.consolidations).length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-800 rounded-lg text-slate-400 text-sm">
-                  <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  Nenhuma missão consolidada ainda. Ao resolver o problema de cada camada, você redigirá a justificativa técnica.
-                </div>
-              ) : (
-                Object.values(currentNotebook.consolidations).map((c) => (
-                  <div key={c.missionNumber} className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-white text-sm">
-                        Consolidação da Missão {c.missionNumber}
-                      </span>
-                      <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Concluída
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded bg-slate-950 border border-slate-800/80 text-xs text-slate-300">
-                      <span className="text-slate-400 block mb-1 font-medium">Justificativa do Aluno:</span>
-                      "{c.justificationText}"
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {tab === 'rubrica' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
-                    Pontuação Preliminar do Processo
-                  </div>
-                  <div className="text-2xl font-black text-white font-mono mt-0.5">
-                    {totalScore.toFixed(1)} <span className="text-slate-500 text-base font-normal">/ 10,0</span>
-                  </div>
-                </div>
-                <div className="text-right text-xs text-slate-400 max-w-[200px]">
-                  Baseada em raciocínio, previsões e justificativas técnicas analisáveis pelo professor.
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {Object.values(rubric).map((item) => (
-                  <div key={item.criterionKey} className="p-3 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-medium text-slate-200">
-                        {item.title}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {item.status === 'revisado_professor'
-                          ? 'Validado pelo docente'
-                          : 'Cálculo automatizado do processo investigativo'}
-                      </div>
-                    </div>
-                    <div className="font-mono text-sm font-semibold text-cyan-400">
-                      {(item.teacherScore !== undefined ? item.teacherScore : item.autoScore).toFixed(1)} / {item.maxScore.toFixed(1)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-3 border-t border-slate-800 bg-[#0B1120] text-center text-xs text-slate-400">
-          Missão OSI • Registros de investigação salvos localmente e no banco
-        </div>
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      variant="lateral"
+      title="Caderno de Evidências"
+      description="Suas suspeitas, testes, conceitos e justificativas, salvos automaticamente."
+      closeLabel="Fechar Caderno de Evidências"
+      bodyClassName="quadriculado !p-0"
+      footer={<p className="text-sm text-grafite-2 text-center">Registros salvos neste navegador e no banco da escola.</p>}
+    >
+      <div role="tablist" aria-label="Seções do caderno" className="sticky top-0 z-10 flex overflow-x-auto bg-folha border-b border-linha px-3">
+        {tabs.map((t, i) => {
+          const selected = tab === t.key;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.key}
+              ref={(el) => {
+                tabRefs.current[t.key] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`aba-${t.key}`}
+              aria-selected={selected}
+              aria-controls={`painel-${t.key}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setTab(t.key)}
+              onKeyDown={(e) => onTabKey(e, i)}
+              className={`shrink-0 flex items-center gap-2 min-h-12 px-3 border-b-[3px] font-semibold whitespace-nowrap transition-colors ${
+                selected ? 'border-caneta text-caneta' : 'border-transparent text-grafite-2 hover:text-grafite'
+              }`}
+            >
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              {t.label}
+              <span className={`text-sm rounded-full px-2 ${selected ? 'bg-caneta-clara' : 'bg-papel'}`}>{t.count}</span>
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      <div role="tabpanel" id={`painel-${tab}`} aria-labelledby={`aba-${tab}`} tabIndex={0} className="p-4 sm:p-6 space-y-3 outline-none">
+        {tab === 'hipoteses' &&
+          (currentNotebook.hypotheses.length === 0 ? (
+            <Empty icon={Lightbulb}>Nenhuma suspeita ainda. Você escreve a primeira no momento C de uma missão.</Empty>
+          ) : (
+            currentNotebook.hypotheses.map((h, i) => (
+              <article key={h.id || i} className="rounded-xl bg-folha border border-linha p-4">
+                <p className="flex justify-between text-sm text-grafite-2">
+                  <span className="font-semibold">Missão {h.missionNumber}</span>
+                  <span>{time(h.createdAt)}</span>
+                </p>
+                <p className="mt-1.5 text-lg leading-snug">{h.statement}</p>
+                {h.selectedConceptIds && h.selectedConceptIds.length > 0 && (
+                  <p className="mt-2 text-sm text-grafite-2">
+                    Conceitos: {h.selectedConceptIds.map((cid) => <span key={cid} className="marca-texto mr-2 font-mono">{cid}</span>)}
+                  </p>
+                )}
+              </article>
+            ))
+          ))}
+
+        {tab === 'testes' &&
+          (currentNotebook.tests.length === 0 ? (
+            <Empty icon={FlaskConical}>Nenhum teste ainda. Os testes aparecem aqui depois do momento D.</Empty>
+          ) : (
+            currentNotebook.tests.map((t, i) => (
+              <article key={t.id || i} className="rounded-xl bg-folha border border-linha p-4 space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h3 className="text-lg font-extrabold">{t.testName}</h3>
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <span aria-hidden="true" className={`led ${t.success ? 'led-verde' : 'led-ambar'}`} />
+                    {t.success ? 'Conexão OK' : 'Falha detectada'}
+                  </span>
+                </div>
+                <dl className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <dt className="text-sm text-grafite-2">Minha previsão</dt>
+                    <dd>{t.predictedResult || 'Não informada'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-grafite-2">Minha interpretação</dt>
+                    <dd>{t.interpretation || 'Pendente'}</dd>
+                  </div>
+                </dl>
+                <pre className="lousa rounded-lg p-3 font-mono text-sm whitespace-pre-wrap">{t.actualResult}</pre>
+              </article>
+            ))
+          ))}
+
+        {tab === 'conceitos' &&
+          (currentNotebook.savedConceptIds.length === 0 ? (
+            <Empty icon={BookOpen}>
+              Nenhum conceito salvo. No <strong>Atlas OSI</strong>, use &quot;Salvar no caderno&quot; para guardar os que ajudarem.
+            </Empty>
+          ) : (
+            currentNotebook.savedConceptIds.map((cid) => {
+              let foundConcept: { id: string; title: string; description: string; realWorldExample: string } | undefined;
+              let foundLayer = 0;
+              for (const l of OSI_LAYERS_DATA) {
+                const c = l.keyConcepts.find((k) => k.id === cid);
+                if (c) {
+                  foundConcept = c;
+                  foundLayer = l.number;
+                  break;
+                }
+              }
+              if (!foundConcept) {
+                return (
+                  <p key={cid} className="rounded-xl bg-folha border border-linha p-4 font-mono">
+                    Conceito: {cid}
+                  </p>
+                );
+              }
+              return (
+                <article key={cid} className="rounded-xl bg-folha border border-linha p-4 flex gap-4">
+                  <span aria-hidden="true" className="w-2 self-stretch rounded-full shrink-0" style={{ background: wireBackground(foundLayer, 'vertical') }} />
+                  <div>
+                    <p className="text-sm text-grafite-2">Camada {foundLayer}</p>
+                    <h3 className="text-lg font-extrabold">{foundConcept.title}</h3>
+                    <p className="mt-1">{foundConcept.description}</p>
+                    <p className="mt-2 text-grafite-2">
+                      <strong className="text-grafite">Na prática:</strong> {foundConcept.realWorldExample}
+                    </p>
+                  </div>
+                </article>
+              );
+            })
+          ))}
+
+        {tab === 'justificativas' &&
+          (Object.keys(currentNotebook.consolidations).length === 0 ? (
+            <Empty icon={FileText}>Nenhuma missão consolidada. A justificativa é escrita no momento F.</Empty>
+          ) : (
+            Object.values(currentNotebook.consolidations).map((c) => (
+              <article key={c.missionNumber} className="rounded-xl bg-folha border border-linha p-4">
+                <p className="flex items-center justify-between gap-2">
+                  <span className="text-lg font-extrabold">Missão {c.missionNumber}</span>
+                  <span className="flex items-center gap-2 text-ok font-semibold text-sm">
+                    <span aria-hidden="true" className="led led-verde" />
+                    Concluída
+                  </span>
+                </p>
+                <p className="mt-2 leading-relaxed">{c.justificationText}</p>
+              </article>
+            ))
+          ))}
+
+        {tab === 'rubrica' && (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-folha border border-linha p-5 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-grafite-2">Pontuação preliminar</p>
+                <p className="font-display font-extrabold text-5xl leading-none mt-1">
+                  {totalScore.toFixed(1)}
+                  <span className="text-2xl text-grafite-2 font-bold"> / 10</span>
+                </p>
+              </div>
+              <p className="text-sm text-grafite-2 max-w-[15rem]">Conta o raciocínio, as previsões e as justificativas. O professor revisa.</p>
+            </div>
+            <ul className="rounded-xl bg-folha border border-linha divide-y divide-linha">
+              {Object.values(rubric).map((item) => {
+                const score = item.teacherScore !== undefined ? item.teacherScore : item.autoScore;
+                return (
+                  <li key={item.criterionKey} className="p-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-semibold">{item.title}</span>
+                      <span className="font-bold whitespace-nowrap">
+                        {score.toFixed(1)} / {item.maxScore.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-papel overflow-hidden" aria-hidden="true">
+                      <div className="h-full rounded-full bg-caneta" style={{ width: `${(score / item.maxScore) * 100}%` }} />
+                    </div>
+                    <p className="mt-1.5 text-sm text-grafite-2">
+                      {item.status === 'revisado_professor' ? 'Validado pelo professor' : 'Cálculo automático do processo'}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }

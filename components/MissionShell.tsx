@@ -2,22 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  AlertTriangle,
-  BookOpen,
-  Lightbulb,
-  FlaskConical,
-  Wrench,
-  CheckCircle2,
-  ChevronRight,
-  ArrowRight,
-  Info,
-  Clock,
-  ExternalLink,
-  ShieldAlert,
-  Sparkles,
-  HelpCircle
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ExternalLink, FlaskConical, Lightbulb, Lock, Wrench } from 'lucide-react';
+import { isMissionOpen } from '@/lib/mission-availability';
 import {
   MissionSimulationState,
   InvestigationHypothesis,
@@ -40,6 +28,8 @@ import {
 } from '@/lib/storage';
 import { OSI_LAYERS_DATA } from '@/lib/atlas-data';
 import TopologyViewer from './TopologyViewer';
+import { useReducedMotion } from './MotionProvider';
+import { wireBackground } from '@/lib/wires';
 
 interface Props {
   missionNumber: number;
@@ -70,6 +60,19 @@ export default function MissionShell({ missionNumber }: Props) {
   const [identifiedCause, setIdentifiedCause] = useState('');
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
   const [successFeedback, setSuccessFeedback] = useState<string | null>(null);
+  const [missionClosed, setMissionClosed] = useState(false);
+
+  // Missions closed by the teacher cannot be worked on
+  useEffect(() => {
+    let active = true;
+    setMissionClosed(false);
+    isMissionOpen(missionNumber).then((open) => {
+      if (active) setMissionClosed(!open);
+    });
+    return () => {
+      active = false;
+    };
+  }, [missionNumber]);
 
   // Load state and reset per-mission form fields when missionNumber changes
   useEffect(() => {
@@ -131,12 +134,12 @@ export default function MissionShell({ missionNumber }: Props) {
   // Submit Hypothesis (Momento C)
   const handleSubmitHypothesis = () => {
     if (hypothesisText.trim().length < 8) {
-      setErrorFeedback('Por favor, escreva uma hipótese mais detalhada explicando o que você suspeita.');
+      setErrorFeedback('Escreva sua suspeita com mais detalhes: o que você acha que está acontecendo, e por quê.');
       return;
     }
     setErrorFeedback(null);
     addHypothesisToNotebook(missionNumber, hypothesisText, selectedConceptIds);
-    setSuccessFeedback('Hipótese registrada com sucesso no Caderno de Evidências!');
+    setSuccessFeedback('Suspeita registrada no Caderno de Evidências.');
     setTimeout(() => {
       setSuccessFeedback(null);
       setActiveMoment('D');
@@ -190,13 +193,18 @@ export default function MissionShell({ missionNumber }: Props) {
   };
 
   // Submit Final Consolidation (Momento F)
-  const handleConsolidateMission = () => {
+  const handleConsolidateMission = async () => {
     if (justificationText.trim().length < 15) {
       setErrorFeedback('A justificativa técnica precisa conter pelo menos 15 caracteres explicando por que a solução funcionou.');
       return;
     }
     if (!simulationState.isResolved) {
       setErrorFeedback('O problema da simulação ainda não foi resolvido. Aplique a intervenção necessária no Momento E.');
+      return;
+    }
+    // The teacher may have closed the mission while the student was working on it
+    if (!(await isMissionOpen(missionNumber))) {
+      setMissionClosed(true);
       return;
     }
 
@@ -222,562 +230,589 @@ export default function MissionShell({ missionNumber }: Props) {
     }, 1500);
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Mission Title Header */}
-      <div className="p-6 bg-[#0F172A] border border-slate-800 rounded-xl space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="font-mono font-bold text-xs px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-              {missionNumber === 8 ? 'Desafio Integrador' : `Missão ${missionNumber} de 8`}
-            </span>
-            <span className="text-slate-500">•</span>
-            <span className="text-xs font-semibold text-slate-300">
-              Camada {config.layerNumber ? `${config.layerNumber} (${config.layerName})` : 'Integrada'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-semibold border ${
-              simulationState.isResolved
-                ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
-                : 'bg-amber-950 text-amber-300 border-amber-800'
-            }`}>
-              {simulationState.isResolved ? 'Problema Resolvido' : 'Investigação em Aberto'}
-            </span>
-          </div>
-        </div>
-
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            {config.title}
-          </h1>
-          <p className="text-sm text-slate-400 mt-0.5">
-            {config.subtitle}
-          </p>
-        </div>
-
-        <div className="p-3.5 bg-slate-900/90 rounded-lg border border-slate-800 text-xs text-slate-300 flex items-start gap-2.5">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <strong className="text-slate-200">Sintoma Principal:</strong> {config.initialProblemDescription}
-          </div>
-        </div>
+  if (missionClosed) {
+    return (
+      <div className="max-w-2xl py-6">
+        <p className="flex items-center gap-2 text-grafite-2">
+          <Lock className="w-5 h-5" aria-hidden="true" />
+          {missionNumber === 8 ? 'Desafio integrador' : `Missão ${missionNumber} de 8`}
+        </p>
+        <h1 className="mt-3 text-[clamp(2rem,5vw,3rem)] font-extrabold [font-stretch:78%] leading-[1.04]">
+          Esta missão está fechada
+        </h1>
+        <p className="mt-3 text-lg text-grafite-2">
+          O professor ainda não liberou esta missão para a turma. Seu progresso está salvo. Volte quando ela for aberta.
+        </p>
+        <Link href="/painel" className="btn btn-primario mt-6">
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          Voltar ao painel da missão
+        </Link>
       </div>
+    );
+  }
 
-      {/* Network Topology Simulation */}
-      <TopologyViewer
-        missionNumber={missionNumber}
-        simulationState={simulationState}
-      />
+  const momentIndex = MOMENTS.findIndex((m) => m.key === activeMoment);
+  const goTo = (key: MomentKey) => setActiveMoment(key);
 
-      {/* 6 Moments Investigation Workflow */}
-      <div className="bg-[#0F172A] border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-        {/* Moments Nav Strip */}
-        <div className="flex border-b border-slate-800 bg-[#0B1120] overflow-x-auto text-xs font-medium">
-          {[
-            { key: 'A', label: 'A. Observação' },
-            { key: 'B', label: 'B. Consulta Atlas' },
-            { key: 'C', label: 'C. Hipótese' },
-            { key: 'D', label: 'D. Previsão & Teste' },
-            { key: 'E', label: 'E. Intervenção' },
-            { key: 'F', label: 'F. Consolidação' },
-          ].map((m) => {
-            const isActive = activeMoment === m.key;
-            return (
-              <button
-                key={m.key}
-                onClick={() => setActiveMoment(m.key as any)}
-                className={`py-3 px-4 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                  isActive
-                    ? 'border-cyan-400 text-cyan-300 bg-slate-900/50'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <span>{m.label}</span>
-              </button>
-            );
-          })}
+  return (
+    <div className="space-y-8">
+      <header>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-grafite-2">
+          <span className="flex items-center gap-2.5">
+            <span aria-hidden="true" className="w-8 h-2.5 rounded-full" style={{ background: wireBackground(config.layerNumber || 0) }} />
+            {missionNumber === 8 ? 'Desafio integrador' : `Missão ${missionNumber} de 8`}
+            {', camada '}
+            {config.layerNumber ? `${config.layerNumber} (${config.layerName})` : 'integrada'}
+          </span>
+          <span className="flex items-center gap-2 font-semibold" role="status">
+            <span aria-hidden="true" className={`led ${simulationState.isResolved ? 'led-verde' : 'led-ambar led-piscando'}`} />
+            <span className={simulationState.isResolved ? 'text-ok' : 'text-alerta'}>
+              {simulationState.isResolved ? 'Problema resolvido' : 'Investigação em aberto'}
+            </span>
+          </span>
         </div>
+        <h1 className="mt-3 text-[clamp(2rem,5vw,3.25rem)] font-extrabold [font-stretch:78%] leading-[1.04]">{config.title}</h1>
+        <p className="mt-2 text-lg text-grafite-2 max-w-3xl">{config.subtitle}</p>
+        <div className="mt-5 max-w-3xl border-l-4 border-led-ambar bg-alerta-fundo rounded-r-xl px-5 py-4">
+          <p className="font-bold">O que foi relatado</p>
+          <p className="mt-1">{config.initialProblemDescription}</p>
+        </div>
+      </header>
 
-        {/* Feedback message banner */}
-        {errorFeedback && (
-          <div className="p-3 bg-red-950/80 border-b border-red-800 text-xs text-red-200 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>{errorFeedback}</span>
-          </div>
-        )}
-        {successFeedback && (
-          <div className="p-3 bg-emerald-950/80 border-b border-emerald-800 text-xs text-emerald-200 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{successFeedback}</span>
-          </div>
-        )}
+      <TopologyViewer missionNumber={missionNumber} simulationState={simulationState} />
 
-        {/* Moments Body */}
-        <div className="p-6">
-          {/* MOMENTO A: OBSERVAÇÃO */}
-          {activeMoment === 'A' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Info className="w-4 h-4 text-cyan-400" />
-                Momento A: Observação dos Fenômenos de Rede
-              </h2>
-              <p className="text-xs text-slate-300">
-                Observe atentamente os indicadores visuais na topologia acima e verifique as anomalias registradas pelos equipamentos:
-              </p>
+      <section aria-labelledby="titulo-investigacao" className="folha overflow-hidden">
+        <h2 id="titulo-investigacao" className="sr-only">
+          Etapas da investigação
+        </h2>
 
-              <div className="space-y-2">
-                {config.initialTopologySymptoms.map((symptom, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center font-mono text-[10px] text-cyan-400 shrink-0">
-                      {i + 1}
-                    </span>
-                    <span>{symptom}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="pt-3 flex justify-end">
-                <button
-                  onClick={() => setActiveMoment('B')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
-                >
-                  <span>Prosseguir para Consulta ao Atlas</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* MOMENTO B: CONSULTA AO ATLAS */}
-          {activeMoment === 'B' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-amber-400" />
-                  Momento B: Consulta aos Conceitos do Atlas OSI
-                </h2>
-                <a
-                  href={`/atlas?layer=${config.layerNumber || 4}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-cyan-400 hover:underline inline-flex items-center gap-1"
-                >
-                  <span>Abrir Atlas Completo em nova aba</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-
-              <p className="text-xs text-slate-300">
-                Selecione abaixo os conceitos técnicos pertinentes a esta camada que ajudarão a formular sua hipótese investigativa:
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {relevantConcepts.map((concept) => {
-                  const isSelected = selectedConceptIds.includes(concept.id);
-                  return (
-                    <div
-                      key={concept.id}
-                      onClick={() => toggleConceptSelection(concept.id)}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-slate-900 border-cyan-500 ring-1 ring-cyan-500/40 text-white'
-                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
+        <nav aria-label="Momentos da investigação" className="border-b border-linha bg-papel/60">
+          <ol className="flex md:grid md:grid-cols-6 overflow-x-auto snap-x px-2 sm:px-4 md:px-2">
+            {MOMENTS.map((m, i) => {
+              const isActive = activeMoment === m.key;
+              const isPast = i < momentIndex;
+              return (
+                <li key={m.key} className="snap-start shrink-0 relative">
+                  {i > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className={`hidden md:block absolute top-[1.85rem] right-1/2 w-full h-[3px] -translate-x-[1.4rem] ${isPast || isActive ? 'bg-caneta' : 'bg-linha'}`}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => goTo(m.key)}
+                    aria-current={isActive ? 'step' : undefined}
+                    className={`relative flex md:flex-col items-center gap-2.5 md:gap-1.5 w-full min-h-14 px-2.5 sm:px-3 md:px-1 py-2 md:py-3 whitespace-nowrap md:whitespace-normal md:text-center font-semibold transition-colors ${
+                      isActive ? 'text-caneta' : 'text-grafite-2 hover:text-grafite'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center font-display font-extrabold text-base border-2 transition-colors ${
+                        isActive
+                          ? 'bg-caneta border-caneta text-white'
+                          : isPast
+                          ? 'bg-caneta-clara border-caneta text-caneta'
+                          : 'bg-folha border-linha-forte text-grafite-2'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h4 className="text-xs font-bold text-slate-200">
-                          {concept.title}
-                        </h4>
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                          isSelected
-                            ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}>
-                          {isSelected ? 'Selecionado' : 'Clique para Vincular'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        {concept.description}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="pt-3 flex justify-between">
-                <button
-                  onClick={() => setActiveMoment('A')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={() => setActiveMoment('C')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
-                >
-                  <span>Avançar para Formular Hipótese</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* MOMENTO C: HIPÓTESE */}
-          {activeMoment === 'C' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Lightbulb className="w-4 h-4 text-amber-400" />
-                Momento C: Formulação de Hipótese Investigativa
-              </h2>
-              <p className="text-xs text-slate-300">
-                Com base no que você observou e nos conceitos consultados, qual é a sua explicação provável para o problema nesta camada?
-              </p>
-
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Declaração da sua hipótese:
-                </label>
-                <textarea
-                  value={hypothesisText}
-                  onChange={(e) => setHypothesisText(e.target.value)}
-                  rows={3}
-                  placeholder="Ex: Suspeito que a ausência de sinal ocorra porque o conector RJ-45 está fisicamente solto da porta..."
-                  className="w-full p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                />
-              </div>
-
-              <div className="flex justify-between pt-2">
-                <button
-                  onClick={() => setActiveMoment('B')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={handleSubmitHypothesis}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
-                >
-                  <span>Registrar Hipótese e Prosseguir</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* MOMENTO D: PREVISÃO E TESTE */}
-          {activeMoment === 'D' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <FlaskConical className="w-4 h-4 text-blue-400" />
-                Momento D: Previsão e Execução de Teste Diagnóstico
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Select test */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Selecione o teste de rede a executar:
-                  </label>
-                  <div className="space-y-2">
-                    {config.availableTests.map((t) => (
-                      <div
-                        key={t.key}
-                        onClick={() => setSelectedTestKey(t.key)}
-                        className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${
-                          selectedTestKey === t.key
-                            ? 'bg-slate-900 border-cyan-500 text-white'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="font-semibold text-slate-200">{t.label}</div>
-                        <div className="text-[11px] text-slate-400 mt-1">{t.description}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Previsão do Aluno (obrigatória) */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    O que você PREVÊ que o teste irá retornar? (Obrigatório antes de executar)
-                  </label>
-                  <input
-                    type="text"
-                    value={predictedResult}
-                    onChange={(e) => setPredictedResult(e.target.value)}
-                    placeholder="Ex: Prevejo que a tensão será 0V e o link constará como down."
-                    className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
-
-                  <button
-                    onClick={handleExecuteTest}
-                    className="w-full py-2.5 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <FlaskConical className="w-4 h-4" />
-                    <span>Disparar Teste Diagnóstico</span>
+                      {m.key}
+                    </span>
+                    <span>
+                      <span className="sr-only">Momento {m.key}: </span>
+                      {m.label}
+                    </span>
                   </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        <div aria-live="assertive">
+          <AnimatePresence initial={false}>
+            {errorFeedback && (
+              <motion.div
+                key="erro"
+                role="alert"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-5 sm:px-8 py-4 bg-erro-fundo text-erro flex items-start gap-2.5 border-b border-erro/20">
+                  <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>{errorFeedback}</span>
                 </div>
-              </div>
+              </motion.div>
+            )}
+            {successFeedback && (
+              <motion.div
+                key="ok"
+                role="status"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-5 sm:px-8 py-4 bg-ok-fundo text-ok flex items-start gap-2.5 border-b border-ok/20 font-semibold">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>{successFeedback}</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-              {/* Test Output Console */}
-              {testOutput && (
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-cyan-400 font-bold">
-                      CONSOLE DE EXECUÇÃO: [{testOutput.diagnosticCode}]
-                    </span>
-                    <span className={`px-2 py-0.5 rounded font-mono text-[10px] border ${
-                      testOutput.success
-                        ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
-                        : 'bg-amber-950 text-amber-300 border-amber-800'
-                    }`}>
-                      {testOutput.success ? 'TEST PASS' : 'ANOMALY DETECTED'}
-                    </span>
+        <div className="px-5 sm:px-8 py-7 min-h-[22rem]">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeMoment}
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.2, ease: [0.22, 0.8, 0.2, 1] }}
+            >
+              {/* MOMENTO A: OBSERVAÇÃO */}
+              {activeMoment === 'A' && (
+                <div className="space-y-5">
+                  <MomentTitle letter="A" title="Observe os sinais da rede" />
+                  <p className="text-grafite-2 max-w-2xl">
+                    Olhe a topologia acima com calma. Estes são os comportamentos registrados pelos equipamentos:
+                  </p>
+                  <ol className="space-y-3 max-w-3xl">
+                    {config.initialTopologySymptoms.map((symptom, i) => (
+                      <li key={i} className="flex items-start gap-3">
+                        <span aria-hidden="true" className="mt-0.5 w-7 h-7 shrink-0 rounded-full bg-papel border border-linha-forte flex items-center justify-center text-sm font-bold">
+                          {i + 1}
+                        </span>
+                        <span className="pt-0.5">{symptom}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <MomentNav onNext={() => goTo('B')} nextLabel="Consultar o Atlas" />
+                </div>
+              )}
+
+              {/* MOMENTO B: CONSULTA AO ATLAS */}
+              {activeMoment === 'B' && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <MomentTitle letter="B" title="Consulte os conceitos da camada" />
+                    <a
+                      href={`/atlas?layer=${config.layerNumber || 4}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-discreto !px-2"
+                    >
+                      Abrir o Atlas completo
+                      <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                      <span className="sr-only">(abre em nova aba)</span>
+                    </a>
                   </div>
-                  <pre className="font-mono text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
-                    {testOutput.output}
-                  </pre>
+                  <p className="text-grafite-2 max-w-2xl">
+                    Marque os conceitos que ajudam a explicar o que você observou. Eles vão junto com a sua suspeita.
+                  </p>
+                  <ul className="grid gap-3 md:grid-cols-2">
+                    {relevantConcepts.map((concept) => {
+                      const isSelected = selectedConceptIds.includes(concept.id);
+                      return (
+                        <li key={concept.id}>
+                          <button
+                            type="button"
+                            onClick={() => toggleConceptSelection(concept.id)}
+                            aria-pressed={isSelected}
+                            className={`w-full h-full text-left rounded-xl border-2 p-4 transition-colors ${
+                              isSelected ? 'border-caneta bg-caneta-clara/50' : 'border-linha hover:border-linha-forte bg-folha'
+                            }`}
+                          >
+                            <span className="flex items-start justify-between gap-3">
+                              <span className={`font-bold text-lg leading-snug ${isSelected ? 'marca-texto' : ''}`}>{concept.title}</span>
+                              <span
+                                aria-hidden="true"
+                                className={`mt-1 w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center ${
+                                  isSelected ? 'bg-caneta border-caneta text-white' : 'border-linha-forte'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-4 h-4" />}
+                              </span>
+                            </span>
+                            <span className="block mt-1.5 text-grafite-2">{concept.description}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <MomentNav onBack={() => goTo('A')} onNext={() => goTo('C')} nextLabel="Escrever minha suspeita" />
+                </div>
+              )}
 
-                  <div className="pt-2">
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Sua interpretação deste resultado:
+              {/* MOMENTO C: HIPÓTESE */}
+              {activeMoment === 'C' && (
+                <div className="space-y-5 max-w-3xl">
+                  <MomentTitle letter="C" title="Qual é a sua suspeita?" />
+                  <p className="text-grafite-2">
+                    Com base no que você observou e nos conceitos que marcou, explique o que provavelmente está acontecendo.
+                  </p>
+                  <div>
+                    <label htmlFor={`hipotese-${missionNumber}`} className="rotulo">
+                      Minha suspeita
+                    </label>
+                    <textarea
+                      id={`hipotese-${missionNumber}`}
+                      value={hypothesisText}
+                      onChange={(e) => setHypothesisText(e.target.value)}
+                      rows={4}
+                      placeholder="Eu suspeito que... porque observei que..."
+                      className="campo leading-relaxed"
+                    />
+                    {selectedConceptIds.length > 0 && (
+                      <p className="mt-2 text-sm text-grafite-2">
+                        {selectedConceptIds.length === 1 ? '1 conceito marcado' : `${selectedConceptIds.length} conceitos marcados`} no
+                        momento B.
+                      </p>
+                    )}
+                  </div>
+                  <MomentNav onBack={() => goTo('B')} onNext={handleSubmitHypothesis} nextLabel="Registrar suspeita" />
+                </div>
+              )}
+
+              {/* MOMENTO D: PREVISÃO E TESTE */}
+              {activeMoment === 'D' && (
+                <div className="space-y-6">
+                  <MomentTitle letter="D" title="Preveja e teste" />
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <fieldset>
+                      <legend className="rotulo">Escolha o teste</legend>
+                      <div className="space-y-2.5">
+                        {config.availableTests.map((t) => {
+                          const checked = selectedTestKey === t.key;
+                          return (
+                            <label
+                              key={t.key}
+                              className={`flex items-start gap-3 rounded-xl border-2 p-4 transition-colors ${
+                                checked ? 'border-caneta bg-caneta-clara/50' : 'border-linha hover:border-linha-forte'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`teste-${missionNumber}`}
+                                value={t.key}
+                                checked={checked}
+                                onChange={() => setSelectedTestKey(t.key)}
+                                className="mt-1 w-5 h-5 accent-caneta shrink-0"
+                              />
+                              <span>
+                                <span className="block font-bold">{t.label}</span>
+                                <span className="block text-grafite-2 mt-0.5">{t.description}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label htmlFor={`previsao-${missionNumber}`} className="rotulo">
+                          O que você prevê que o teste vai mostrar?
+                        </label>
+                        <input
+                          id={`previsao-${missionNumber}`}
+                          type="text"
+                          value={predictedResult}
+                          onChange={(e) => setPredictedResult(e.target.value)}
+                          placeholder="Se minha suspeita estiver certa, o teste vai mostrar..."
+                          className="campo"
+                          aria-describedby={`previsao-ajuda-${missionNumber}`}
+                        />
+                        <p id={`previsao-ajuda-${missionNumber}`} className="mt-1.5 text-sm text-grafite-2">
+                          Obrigatório antes de rodar o teste.
+                        </p>
+                      </div>
+                      <button type="button" onClick={handleExecuteTest} className="btn btn-primario w-full">
+                        <FlaskConical className="w-5 h-5" aria-hidden="true" />
+                        Disparar teste diagnóstico
+                      </button>
+
+                      <AnimatePresence>
+                        {testOutput && (
+                          <motion.div
+                            key={testOutput.output}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            className="space-y-3"
+                          >
+                            <div className="lousa rounded-xl overflow-hidden">
+                              <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-lousa-2 text-sm">
+                                <span className="font-mono text-giz-2">{testOutput.diagnosticCode}</span>
+                                <span className="flex items-center gap-2 font-semibold">
+                                  <span aria-hidden="true" className={`led ${testOutput.success ? 'led-verde' : 'led-ambar'}`} />
+                                  {testOutput.success ? 'Teste passou' : 'Anomalia detectada'}
+                                </span>
+                              </div>
+                              <TerminalOutput text={testOutput.output} />
+                            </div>
+                            <div>
+                              <label htmlFor={`interpretacao-${missionNumber}`} className="rotulo">
+                                Como você interpreta este resultado?
+                              </label>
+                              <input
+                                id={`interpretacao-${missionNumber}`}
+                                type="text"
+                                value={testInterpretation}
+                                onChange={(e) => setTestInterpretation(e.target.value)}
+                                onBlur={saveTestInterpretation}
+                                placeholder="O resultado confirma ou contradiz minha previsão? Por quê?"
+                                className="campo"
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                  <MomentNav
+                    onBack={() => goTo('C')}
+                    onNext={() => {
+                      saveTestInterpretation();
+                      setActiveMoment('E');
+                    }}
+                    nextLabel="Ir para a intervenção"
+                  />
+                </div>
+              )}
+
+              {/* MOMENTO E: INTERVENÇÃO */}
+              {activeMoment === 'E' && (
+                <div className="space-y-5">
+                  <MomentTitle letter="E" title="Intervenha no sistema" />
+                  <p className="text-grafite-2 max-w-2xl">
+                    Aplique a correção técnica e acompanhe na topologia se a comunicação volta.
+                  </p>
+                  <ul className="space-y-3">
+                    {config.interventions.map((intervention) => (
+                      <li
+                        key={intervention.key}
+                        className="rounded-xl border-2 border-linha p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      >
+                        <div>
+                          <p className="font-bold text-lg">{intervention.label}</p>
+                          <p className="text-grafite-2 mt-0.5">{intervention.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyIntervention(intervention.key)}
+                          className="btn btn-sucesso shrink-0"
+                        >
+                          <Wrench className="w-[18px] h-[18px]" aria-hidden="true" />
+                          Aplicar correção
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <AnimatePresence>
+                    {simulationState.isResolved && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.97 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+                        className="rounded-xl bg-ok-fundo border border-ok/25 p-5 flex items-start gap-3"
+                        role="status"
+                      >
+                        <motion.span
+                          aria-hidden="true"
+                          className="led led-verde mt-1.5"
+                          initial={{ scale: 0.4 }}
+                          animate={{ scale: [0.4, 1.6, 1] }}
+                          transition={{ duration: 0.6 }}
+                        />
+                        <p>
+                          <strong>A rede voltou a responder.</strong> Confira a topologia e siga para a consolidação para explicar o que você
+                          fez.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <MomentNav onBack={() => goTo('D')} onNext={() => goTo('F')} nextLabel="Ir para a consolidação" />
+                </div>
+              )}
+
+              {/* MOMENTO F: CONSOLIDAÇÃO */}
+              {activeMoment === 'F' && (
+                <div className="space-y-5 max-w-3xl">
+                  <MomentTitle letter="F" title="Justifique a solução" />
+                  <p className="text-grafite-2">
+                    Para concluir a missão, explique a causa e por que a correção funcionou. O professor lê esta parte.
+                  </p>
+                  <div>
+                    <label htmlFor={`causa-${missionNumber}`} className="rotulo">
+                      Causa identificada
                     </label>
                     <input
+                      id={`causa-${missionNumber}`}
                       type="text"
-                      value={testInterpretation}
-                      onChange={(e) => setTestInterpretation(e.target.value)}
-                      onBlur={saveTestInterpretation}
-                      placeholder="Ex: O resultado confirmou a falta de sinal físico no par trançado."
-                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                      value={identifiedCause}
+                      onChange={(e) => setIdentifiedCause(e.target.value)}
+                      placeholder="Descreva, com suas palavras, a causa raiz da falha..."
+                      className="campo"
                     />
                   </div>
-                </div>
-              )}
-
-              <div className="pt-3 flex justify-between">
-                <button
-                  onClick={() => setActiveMoment('C')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={() => {
-                    saveTestInterpretation();
-                    setActiveMoment('E');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
-                >
-                  <span>Prosseguir para Intervenção</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* MOMENTO E: INTERVENÇÃO */}
-          {activeMoment === 'E' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-emerald-400" />
-                Momento E: Reavaliação e Intervenção no Sistema
-              </h2>
-              <p className="text-xs text-slate-300">
-                Aplique a intervenção técnica adequada para corrigir a falha na camada e restabelecer a comunicação:
-              </p>
-
-              <div className="space-y-3">
-                {config.interventions.map((intervention) => (
-                  <div
-                    key={intervention.key}
-                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-white">
-                        {intervention.label}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        {intervention.description}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleApplyIntervention(intervention.key)}
-                      className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shrink-0"
-                    >
-                      Aplicar Correção
+                  <div>
+                    <label htmlFor={`justificativa-${missionNumber}`} className="rotulo">
+                      Justificativa técnica
+                    </label>
+                    <textarea
+                      id={`justificativa-${missionNumber}`}
+                      value={justificationText}
+                      onChange={(e) => setJustificationText(e.target.value)}
+                      rows={5}
+                      placeholder="Por que esta camada era a responsável pela falha, e qual evidência mostrou isso?"
+                      className="campo leading-relaxed"
+                      aria-describedby={`justificativa-ajuda-${missionNumber}`}
+                    />
+                    <p id={`justificativa-ajuda-${missionNumber}`} className="mt-1.5 text-sm text-grafite-2">
+                      {justificationText.trim().length < 15
+                        ? `Escreva pelo menos 15 caracteres (${justificationText.trim().length} até agora).`
+                        : 'Pronto para enviar.'}
+                    </p>
+                  </div>
+                  <div className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
+                    <button type="button" onClick={() => goTo('E')} className="btn btn-discreto">
+                      <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                      Voltar
+                    </button>
+                    <button type="button" onClick={handleConsolidateMission} className="btn btn-sucesso !min-h-12 !px-6">
+                      <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                      Consolidar missão e avançar
                     </button>
                   </div>
-                ))}
-              </div>
-
-              {simulationState.isResolved && (
-                <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-200 flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <div>
-                    <span className="font-bold">Intervenção bem-sucedida!</span> O estado da topologia foi atualizado. Vá para a Consolidação para registrar sua justificativa técnica.
-                  </div>
                 </div>
               )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </section>
 
-              <div className="pt-3 flex justify-between">
-                <button
-                  onClick={() => setActiveMoment('D')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={() => setActiveMoment('F')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
-                >
-                  <span>Prosseguir para Consolidação</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* MOMENTO F: CONSOLIDAÇÃO */}
-          {activeMoment === 'F' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-purple-400" />
-                Momento F: Consolidação Justificada da Investigação
-              </h2>
-              <p className="text-xs text-slate-300">
-                Para concluir esta missão e liberar a próxima etapa, redija uma justificativa técnica concisa explicando a causa raiz e como a intervenção resolveu o problema:
-              </p>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Causa Raiz Identificada:
-                  </label>
-                  <input
-                    type="text"
-                    value={identifiedCause}
-                    onChange={(e) => setIdentifiedCause(e.target.value)}
-                    placeholder="Descreva, com suas palavras, a causa raiz da falha..."
-                    className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
+      <section aria-labelledby="titulo-pistas">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="titulo-pistas" className="text-2xl font-extrabold flex items-center gap-2">
+            <Lightbulb className="w-6 h-6 text-led-ambar" aria-hidden="true" />
+            Precisa de uma pista?
+          </h2>
+          <p className="text-grafite-2">Usar pistas não tira pontos.</p>
+        </div>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            {
+              level: 1,
+              title: 'Pista 1: observação',
+              text: 'Compare os LEDs e o ponto onde o pacote para na topologia. O que muda de um equipamento para o outro?',
+            },
+            {
+              level: 2,
+              title: 'Pista 2: evidências',
+              text: 'Compare o resultado do teste de diagnóstico antes e depois da intervenção no painel.',
+            },
+            {
+              level: 3,
+              title: 'Pista 3: Atlas OSI',
+              text: `Consulte a seção da Camada ${config.layerNumber || 'Integrada'} no Atlas OSI para revisar suas definições.`,
+            },
+          ].map((hint) => {
+            const open = unlockedHintLevel >= hint.level;
+            return (
+              <li key={hint.level} className={`rounded-xl border-2 p-4 ${open ? 'border-led-ambar bg-alerta-fundo/60' : 'border-dashed border-linha-forte'}`}>
+                <p className="font-bold">{hint.title}</p>
+                <div aria-live="polite">
+                  {open ? (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-1.5">
+                      {hint.text}
+                    </motion.p>
+                  ) : (
+                    <button type="button" onClick={() => setUnlockedHintLevel(hint.level)} className="btn btn-discreto !px-2 mt-1 -ml-2">
+                      Revelar pista
+                    </button>
+                  )}
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Justificativa Técnica do Aluno (Será analisada pelo Professor):
-                  </label>
-                  <textarea
-                    value={justificationText}
-                    onChange={(e) => setJustificationText(e.target.value)}
-                    rows={4}
-                    placeholder="Explique por que esta camada era a responsável pela falha e como a evidência observada comprovou isso..."
-                    className="w-full p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-between items-center">
-                <button
-                  onClick={() => setActiveMoment('E')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={handleConsolidateMission}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Consolidar Missão & Avançar</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Gradual Pedagogical Hints (Pista 1, 2, 3) */}
-      <div className="p-4 bg-[#0F172A] border border-slate-800 rounded-xl space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <HelpCircle className="w-4 h-4 text-cyan-400" />
-            Sistema de Pistas Pedagógicas Graduais
-          </span>
-          <span className="text-[11px] text-slate-500">
-            Disponível sem penalização de nota
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {/* Pista 1 */}
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1.5">
-            <div className="flex items-center justify-between font-semibold text-slate-300">
-              <span>Pista 1: Observação</span>
-              {unlockedHintLevel < 1 ? (
-                <button
-                  onClick={() => setUnlockedHintLevel(1)}
-                  className="text-[10px] font-mono text-cyan-400 hover:underline"
-                >
-                  Revelar
-                </button>
-              ) : (
-                <span className="text-[10px] text-emerald-400">Ativa</span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              {unlockedHintLevel >= 1
-                ? 'Verifique os LEDs de status na topologia e observe se há sinal físico ou tráfego de bits na porta.'
-                : 'Clique em "Revelar" para obter uma orientação de observação.'}
-            </p>
-          </div>
-
-          {/* Pista 2 */}
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1.5">
-            <div className="flex items-center justify-between font-semibold text-slate-300">
-              <span>Pista 2: Evidências</span>
-              {unlockedHintLevel < 2 ? (
-                <button
-                  onClick={() => setUnlockedHintLevel(2)}
-                  className="text-[10px] font-mono text-cyan-400 hover:underline"
-                >
-                  Revelar
-                </button>
-              ) : (
-                <span className="text-[10px] text-emerald-400">Ativa</span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              {unlockedHintLevel >= 2
-                ? 'Compare o resultado do teste de diagnóstico antes e depois da intervenção no painel.'
-                : 'Clique em "Revelar" para comparar evidências.'}
-            </p>
-          </div>
-
-          {/* Pista 3 */}
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1.5">
-            <div className="flex items-center justify-between font-semibold text-slate-300">
-              <span>Pista 3: Atlas OSI</span>
-              {unlockedHintLevel < 3 ? (
-                <button
-                  onClick={() => setUnlockedHintLevel(3)}
-                  className="text-[10px] font-mono text-cyan-400 hover:underline"
-                >
-                  Revelar
-                </button>
-              ) : (
-                <span className="text-[10px] text-emerald-400">Ativa</span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              {unlockedHintLevel >= 3
-                ? `Consulte a seção da Camada ${config.layerNumber || 'Integrada'} no Atlas OSI para revisar suas definições.`
-                : 'Clique em "Revelar" para ver o direcionamento conceitual.'}
-            </p>
-          </div>
-        </div>
-      </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
+  );
+}
+
+type MomentKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+const MOMENTS: { key: MomentKey; label: string }[] = [
+  { key: 'A', label: 'Observação' },
+  { key: 'B', label: 'Consulta ao Atlas' },
+  { key: 'C', label: 'Suspeita' },
+  { key: 'D', label: 'Previsão e teste' },
+  { key: 'E', label: 'Intervenção' },
+  { key: 'F', label: 'Consolidação' },
+];
+
+function MomentTitle({ letter, title }: { letter: string; title: string }) {
+  return (
+    <h3 className="text-2xl sm:text-3xl font-extrabold">
+      <span className="sr-only">Momento {letter}: </span>
+      {title}
+    </h3>
+  );
+}
+
+function MomentNav({ onBack, onNext, nextLabel }: { onBack?: () => void; onNext: () => void; nextLabel: string }) {
+  return (
+    <div className="pt-3 flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
+      {onBack ? (
+        <button type="button" onClick={onBack} className="btn btn-discreto">
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          Voltar
+        </button>
+      ) : (
+        <span />
+      )}
+      <button type="button" onClick={onNext} className="btn btn-primario">
+        {nextLabel}
+      </button>
+    </div>
+  );
+}
+
+// Console output appears line by line, like a real terminal (instant with reduced motion).
+function TerminalOutput({ text }: { text: string }) {
+  const reduced = useReducedMotion();
+  const lines = text.split('\n');
+  const [shown, setShown] = useState(reduced ? lines.length : 0);
+
+  useEffect(() => {
+    if (reduced) {
+      setShown(lines.length);
+      return;
+    }
+    setShown(0);
+    let i = 0;
+    const timer = window.setInterval(() => {
+      i += 1;
+      setShown(i);
+      if (i >= lines.length) window.clearInterval(timer);
+    }, 110);
+    return () => window.clearInterval(timer);
+  }, [text, reduced, lines.length]);
+
+  return (
+    <pre className="px-4 py-3.5 font-mono text-[0.9rem] leading-relaxed whitespace-pre-wrap text-giz overflow-x-auto">
+      <span aria-hidden="true">
+        {lines.slice(0, shown).join('\n')}
+        {shown < lines.length && <span className="inline-block w-2 h-4 bg-giz align-middle animate-pulse" />}
+      </span>
+      <span className="sr-only">{text}</span>
+    </pre>
   );
 }

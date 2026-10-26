@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Lock, ArrowRight, AlertCircle, GraduationCap } from 'lucide-react';
+import { Lock, AlertCircle } from 'lucide-react';
 import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 
 export default function ProfessorLoginPage() {
   const router = useRouter();
@@ -36,60 +37,49 @@ export default function ProfessorLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1120]">
+    <div className="min-h-screen flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-md mx-auto px-4 py-16 w-full flex flex-col justify-center">
-        <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-purple-950 text-purple-400 border border-purple-800 flex items-center justify-center mx-auto">
-              <ShieldCheck className="w-6 h-6" />
+      <main id="conteudo" className="flex-1 w-full max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-20">
+        <h1 className="text-[clamp(2rem,5vw,2.75rem)] font-extrabold [font-stretch:78%] leading-[1.05]">Área do professor</h1>
+        <p className="mt-3 text-lg text-grafite-2">Acompanhe a turma, revise os dossiês e atribua as notas.</p>
+
+        <form onSubmit={handleLogin} className="folha mt-8 p-6 sm:p-8 space-y-5" noValidate>
+          {error && (
+            <div role="alert" className="rounded-xl bg-erro-fundo border border-erro/30 p-4 text-erro flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">
-              Acesso Docente Autenticado
-            </h1>
-            <p className="text-xs text-slate-400">
-              Painel de acompanhamento e avaliação dos estudantes do IFPA Campus Breves.
-            </p>
+          )}
+
+          <div>
+            <label htmlFor="teacher-key" className="rotulo">
+              Chave de acesso
+            </label>
+            <div className="relative">
+              <input
+                id="teacher-key"
+                type="password"
+                required
+                aria-required="true"
+                aria-invalid={Boolean(error)}
+                autoComplete="current-password"
+                value={accessKey}
+                onChange={(e) => setAccessKey(e.target.value)}
+                placeholder="Digite a chave de acesso"
+                className="campo !pr-11"
+              />
+              <Lock className="w-5 h-5 text-grafite-3 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+            </div>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="p-3 rounded-lg bg-red-950/80 border border-red-800 text-xs text-red-200 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label htmlFor="teacher-key" className="block text-xs font-semibold text-slate-200">
-                Chave de Acesso Institucional
-              </label>
-              <div className="relative">
-                <input
-                  id="teacher-key"
-                  type="password"
-                  required
-                  value={accessKey}
-                  onChange={(e) => setAccessKey(e.target.value)}
-                  placeholder="Digite a chave de acesso"
-                  className="w-full p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                />
-                <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white transition-colors flex items-center justify-center gap-2 shadow-sm"
-            >
-              <span>Acessar Painel do Professor</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
+          <button type="submit" disabled={submitting} className="btn btn-primario w-full !min-h-12 !text-base">
+            {submitting ? 'Verificando...' : 'Acessar Painel do Professor'}
+          </button>
+        </form>
       </main>
+
+      <Footer />
     </div>
   );
 }

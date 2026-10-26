@@ -3,31 +3,34 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  CheckCircle2,
-  Lock,
-  Play,
-  RotateCcw,
-  BookOpen,
-  ClipboardList,
-  Layers,
-  ArrowRight,
-  Radio,
-  Server,
-  Laptop,
-  Check,
-  Award
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { BookOpen, FileText, Lock, RotateCcw } from 'lucide-react';
 import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import { wireBackground } from '@/lib/wires';
 import { getActiveStudent, getActiveSession, getEvidenceNotebook, clearActiveStudentSession } from '@/lib/storage';
 import { StudentProfile, ActivitySession, EvidenceNotebook } from '@/lib/types';
-import { MISSIONS_CONFIG } from '@/lib/simulation-engine';
+import { fetchMissionAvailability } from '@/lib/mission-availability';
+
+// Descriptions name each layer's subject only, never the fault being investigated.
+const STAGES = [
+  { num: 1, name: 'Física', title: 'O Sinal Desaparecido', desc: 'Cabos, conectores e sinais elétricos.' },
+  { num: 2, name: 'Enlace', title: 'O Caminho do Quadro', desc: 'Quadros Ethernet, endereços MAC e o switch.' },
+  { num: 3, name: 'Rede', title: 'O Pacote Sem Caminho', desc: 'Endereços IP, sub-redes e roteamento.' },
+  { num: 4, name: 'Transporte', title: 'A Conexão Interrompida', desc: 'Portas lógicas e conexões TCP.' },
+  { num: 5, name: 'Sessão', title: 'O Diálogo Perdido', desc: 'Como um diálogo entre sistemas começa e se mantém.' },
+  { num: 6, name: 'Apresentação', title: 'Dados Sem Sentido', desc: 'Formato e codificação dos dados.' },
+  { num: 7, name: 'Aplicação', title: 'O Recurso Indisponível', desc: 'Pedidos e respostas entre cliente e servidor.' },
+  { num: 8, name: 'Integrador', title: 'Desafio Integrador', desc: 'Uma investigação que cruza mais de uma camada.' },
+];
 
 export default function PainelPage() {
   const router = useRouter();
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [session, setSession] = useState<ActivitySession | null>(null);
-  const [notebook, setNotebook] = useState<EvidenceNotebook | null>(null);
+  const [, setNotebook] = useState<EvidenceNotebook | null>(null);
+  const [selectedPort, setSelectedPort] = useState<number | null>(null);
+  const [closedMissions, setClosedMissions] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const s = getActiveStudent();
@@ -39,6 +42,7 @@ export default function PainelPage() {
     setStudent(s);
     setSession(sess);
     setNotebook(getEvidenceNotebook());
+    fetchMissionAvailability().then((a) => setClosedMissions(a.closed));
   }, [router]);
 
   if (!student) return null;
@@ -46,210 +50,226 @@ export default function PainelPage() {
   const completedCount = session?.completedMissions.length || 0;
   const progressPercent = Math.round((completedCount / 8) * 100);
   const isAllCompleted = completedCount >= 8 || session?.status === 'concluido';
-
-  const stages = [
-    { num: 1, name: 'Física', title: 'O Sinal Desaparecido', icon: '⚡', desc: 'Cabos, conectores RJ-45 e sinais elétricos' },
-    { num: 2, name: 'Enlace', title: 'O Caminho do Quadro', icon: '🔀', desc: 'Quadros Ethernet, MAC Address e Switch' },
-    { num: 3, name: 'Rede', title: 'O Pacote Sem Caminho', icon: '🌐', desc: 'Endereçamento IP, Gateway Padrão e Roteamento' },
-    { num: 4, name: 'Transporte', title: 'A Conexão Interrompida', icon: '🔄', desc: 'Portas lógicas e 3-Way Handshake TCP' },
-    { num: 5, name: 'Sessão', title: 'O Diálogo Perdido', icon: '💬', desc: 'Tokens, sincronização e continuidade do diálogo' },
-    { num: 6, name: 'Apresentação', title: 'Dados Sem Sentido', icon: '🔤', desc: 'Sintaxe, codificação UTF-8 e decodificação' },
-    { num: 7, name: 'Aplicação', title: 'O Recurso Indisponível', icon: '📄', desc: 'Requisição HTTP GET e códigos 200 vs 404' },
-    { num: 8, name: 'Integrador', title: 'Desafio Integrador', icon: '🏆', desc: 'Diagnóstico duplo e relatório final consolidado' },
-  ];
-
   const currentStage = session?.currentStage || 1;
+  const continueHref = !isAllCompleted && currentStage <= 8 ? `/missao/${currentStage}` : '/conclusao';
+  const currentClosed = !isAllCompleted && currentStage <= 8 && closedMissions.has(currentStage);
 
   const handleSwitchStudent = () => {
     clearActiveStudentSession();
     router.push('/acesso');
   };
 
+  const statusOf = (num: number) => {
+    const isCompleted = Boolean(session?.completedMissions.includes(num));
+    const isClosed = closedMissions.has(num);
+    const isAvailable = (num <= currentStage || isCompleted) && !isClosed;
+    const isCurrent = num === currentStage && !isCompleted;
+    const label = isClosed
+      ? 'Fechada pelo professor'
+      : isCompleted
+      ? 'Concluída'
+      : isCurrent
+      ? 'Em investigação'
+      : isAvailable
+      ? 'Disponível'
+      : 'Bloqueada';
+    return { isCompleted, isAvailable, isCurrent, isClosed, label };
+  };
+
+  const shownNum = selectedPort ?? Math.min(currentStage, 8);
+  const shown = STAGES[shownNum - 1];
+  const shownStatus = statusOf(shown.num);
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1120]">
+    <div className="min-h-screen flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 space-y-8 w-full">
-        {/* Welcome Banner & Progress Overview */}
-        <section className="p-6 rounded-2xl bg-[#0F172A] border border-slate-800 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-mono text-cyan-400 mb-1 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                SESSÃO ATIVA • {student.className}
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                Olá, {student.fullName}
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                Acompanhe a trilha de restauração da rede pelas sete camadas do Modelo OSI.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:items-end gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-medium">Progresso Geral:</span>
-                <span className="font-mono text-sm font-bold text-cyan-400 bg-cyan-950 px-2.5 py-0.5 rounded border border-cyan-800">
-                  {completedCount}/8 Etapas ({progressPercent}%)
-                </span>
-              </div>
-              <div className="w-48 bg-slate-800 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-cyan-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
+      <main id="conteudo" className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-10">
+        <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-end">
+          <div>
+            <p className="text-grafite-2">{student.className}</p>
+            <h1 className="mt-1 text-[clamp(2.1rem,5vw,3.4rem)] font-extrabold [font-stretch:78%] leading-[1.04]">
+              Olá, {student.fullName}
+            </h1>
+            <div className="mt-6 flex flex-col sm:flex-row flex-wrap gap-3">
+              {currentClosed ? (
+                <p className="flex items-center gap-2 min-h-12 px-4 rounded-[0.625rem] bg-alerta-fundo text-alerta font-semibold">
+                  <Lock className="w-[18px] h-[18px]" aria-hidden="true" />
+                  A etapa {currentStage} ainda não foi liberada pelo professor
+                </p>
+              ) : (
+                <Link href={continueHref} className="btn btn-primario !min-h-12 !text-base !px-6">
+                  {!isAllCompleted && currentStage <= 8
+                    ? `Continuar: etapa ${currentStage} (${STAGES[currentStage - 1].name})`
+                    : 'Ver relatório final'}
+                </Link>
+              )}
+              <Link href="/atlas" className="btn btn-secundario">
+                <BookOpen className="w-[18px] h-[18px]" aria-hidden="true" />
+                Abrir Atlas OSI
+              </Link>
+              <Link href="/conclusao" className="btn btn-secundario">
+                <FileText className="w-[18px] h-[18px]" aria-hidden="true" />
+                Dossiê e rubrica
+              </Link>
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80">
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href={!isAllCompleted && currentStage <= 8 ? `/missao/${currentStage}` : '/conclusao'}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors shadow-sm"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>
-                  {!isAllCompleted && currentStage <= 8
-                    ? `Continuar: Etapa ${currentStage} (${stages[currentStage - 1].name})`
-                    : 'Ver Relatório Final Concluído'}
-                </span>
-              </Link>
-
-              <Link
-                href="/atlas"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                <span>Abrir Atlas OSI</span>
-              </Link>
-
-              <Link
-                href="/conclusao"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 transition-colors"
-              >
-                <Award className="w-3.5 h-3.5 text-purple-400" />
-                <span>Dossiê & Rubrica</span>
-              </Link>
+          <div>
+            <p id="rotulo-progresso" className="font-bold text-lg">
+              {completedCount} de 8 missões concluídas
+            </p>
+            <div
+              role="progressbar"
+              aria-labelledby="rotulo-progresso"
+              aria-valuemin={0}
+              aria-valuemax={8}
+              aria-valuenow={completedCount}
+              aria-valuetext={`${progressPercent}%`}
+              className="mt-3 grid grid-cols-8 gap-1.5"
+            >
+              {STAGES.map((stg) => {
+                const st = statusOf(stg.num);
+                return (
+                  <span
+                    key={stg.num}
+                    className={`h-3 rounded-full ${st.isCompleted ? '' : st.isCurrent ? 'bg-caneta-clara ring-2 ring-caneta ring-inset' : 'bg-linha'}`}
+                    style={st.isCompleted ? { background: wireBackground(stg.num) } : undefined}
+                  />
+                );
+              })}
             </div>
-
             <button
               type="button"
               onClick={handleSwitchStudent}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-colors"
-              title="Encerrar sessão ativa neste computador para permitir o acesso de outro aluno"
+              className="btn btn-discreto mt-4 !px-2 -ml-2"
+              title="Encerrar a sessão neste computador para outro aluno entrar"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Trocar Aluno</span>
+              <RotateCcw className="w-4 h-4" aria-hidden="true" />
+              Trocar aluno
             </button>
           </div>
         </section>
 
-        {/* 8 Stages Trilha / Journey Cards */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">
-                Trilha Investigativa da Rede
-              </h2>
-              <p className="text-xs text-slate-400">
-                Acesse cada etapa para analisar fenômenos, testar hipóteses e consolidar seu aprendizado:
-              </p>
+        <section aria-labelledby="titulo-portas">
+          <h2 id="titulo-portas" className="text-2xl sm:text-3xl font-extrabold">
+            Trilha investigativa
+          </h2>
+          <p className="mt-2 text-grafite-2">Cada porta é uma missão. Escolha uma para ver os detalhes.</p>
+
+          <div className="lousa mt-5 rounded-2xl p-4 sm:p-6">
+            <div className="flex flex-wrap gap-2 items-center justify-between text-giz-2 text-sm mb-4">
+              <span className="font-display font-bold text-giz [font-stretch:80%] text-lg">Switch da trilha, 8 portas</span>
+              <span className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5">
+                  <span className="led led-verde" aria-hidden="true" />
+                  concluída
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="led led-ambar" aria-hidden="true" />
+                  atual
+                </span>
+              </span>
             </div>
+            <ul className="grid grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-4">
+              {STAGES.map((stg) => {
+                const st = statusOf(stg.num);
+                const selected = shownNum === stg.num;
+                return (
+                  <li key={stg.num}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPort(stg.num)}
+                      aria-pressed={selected}
+                      aria-label={`Missão ${stg.num}, ${stg.name}: ${stg.title}. ${st.label}.`}
+                      className={`w-full rounded-xl p-2 sm:p-2.5 transition-colors ${
+                        selected ? 'bg-lousa-3 ring-2 ring-marca' : 'bg-lousa-2 hover:bg-lousa-3'
+                      }`}
+                    >
+                      <span className="flex justify-between px-1 mb-1.5" aria-hidden="true">
+                        <span className={`led ${st.isCompleted ? 'led-verde' : 'led-apagado opacity-40'}`} />
+                        <span className={`led ${st.isCurrent && !st.isClosed ? 'led-ambar led-piscando' : 'led-apagado opacity-40'}`} />
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="relative block mx-auto w-full aspect-[5/4] rounded-md bg-[#0f1614] border-2 border-[#0a0f0e]"
+                      >
+                        <span className="absolute left-1/2 -translate-x-1/2 bottom-0 w-[42%] h-[22%] bg-lousa-2 rounded-t-sm" />
+                        <span className="absolute inset-x-[14%] top-[18%] flex justify-between">
+                          {Array.from({ length: 8 }).map((_, k) => (
+                            <span key={k} className="w-[7%] h-1.5 bg-[#c9a227] rounded-[1px]" />
+                          ))}
+                        </span>
+                        {st.isCompleted && (
+                          <span
+                            className="absolute inset-x-[22%] top-[38%] bottom-[22%] rounded-sm"
+                            style={{ background: wireBackground(stg.num, 'vertical') }}
+                          />
+                        )}
+                        {!st.isAvailable && <Lock className="absolute inset-0 m-auto w-4 h-4 text-giz-2/70" />}
+                      </span>
+                      <span aria-hidden="true" className="block mt-1.5 text-center font-display font-bold text-giz text-lg leading-none">
+                        {stg.num}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {stages.map((stg) => {
-              const isCompleted = session?.completedMissions.includes(stg.num);
-              const isAvailable = stg.num <= currentStage || isCompleted;
-              const isCurrent = stg.num === currentStage && !isCompleted;
-
-              let statusLabel = 'Bloqueada';
-              let badgeStyle = 'bg-slate-900 text-slate-500 border-slate-800';
-
-              if (isCompleted) {
-                statusLabel = 'Concluída';
-                badgeStyle = 'bg-emerald-950 text-emerald-400 border-emerald-800';
-              } else if (isCurrent) {
-                statusLabel = 'Em Investigação';
-                badgeStyle = 'bg-cyan-950 text-cyan-300 border-cyan-800 animate-pulse';
-              } else if (isAvailable) {
-                statusLabel = 'Disponível';
-                badgeStyle = 'bg-slate-800 text-slate-300 border-slate-700';
-              }
-
-              return (
-                <div
-                  key={stg.num}
-                  className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
-                    isCurrent
-                      ? 'bg-slate-900 border-cyan-500/80 ring-1 ring-cyan-500/30 shadow-lg'
-                      : isCompleted
-                      ? 'bg-slate-900/80 border-slate-800'
-                      : isAvailable
-                      ? 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
-                      : 'bg-slate-950/40 border-slate-900 opacity-60'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl">{stg.icon}</span>
-                      <span className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded border ${badgeStyle}`}>
-                        {statusLabel}
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] font-mono text-cyan-400 font-semibold">
-                        {stg.num === 8 ? 'Desafio Integrador' : `Camada ${stg.num} — ${stg.name}`}
-                      </div>
-                      <h3 className="text-sm font-bold text-white mt-0.5">
-                        {stg.title}
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1 leading-normal">
-                        {stg.desc}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-800/80 mt-4">
-                    {isAvailable ? (
-                      <Link
-                        href={`/missao/${stg.num}`}
-                        className={`w-full py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                          isCurrent
-                            ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm'
-                            : isCompleted
-                            ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                            : 'bg-slate-800 hover:bg-slate-700 text-white'
-                        }`}
-                      >
-                        {isCompleted ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Revisar Missão</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3 h-3 fill-current" />
-                            <span>Investigar</span>
-                          </>
-                        )}
-                      </Link>
-                    ) : (
-                      <div className="py-2 text-center text-xs text-slate-600 flex items-center justify-center gap-1.5">
-                        <Lock className="w-3 h-3" />
-                        <span>Conclua a etapa anterior</span>
-                      </div>
-                    )}
-                  </div>
+          <div aria-live="polite">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={shown.num}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+                className="folha mt-4 p-5 sm:p-7 grid sm:grid-cols-[auto_1fr_auto] gap-5 items-center"
+              >
+                <span
+                  aria-hidden="true"
+                  className="hidden sm:block w-3 self-stretch rounded-full"
+                  style={{ background: wireBackground(shown.num, 'vertical') }}
+                />
+                <div>
+                  <p className="text-grafite-2">
+                    {shown.num === 8 ? 'Desafio integrador' : `Missão ${shown.num}, camada ${shown.name}`}
+                    {', '}
+                    <span
+                      className={
+                        shownStatus.isCompleted ? 'text-ok font-semibold' : shownStatus.isCurrent ? 'text-alerta font-semibold' : ''
+                      }
+                    >
+                      {shownStatus.label.toLowerCase()}
+                    </span>
+                  </p>
+                  <h3 className="mt-1 text-2xl sm:text-3xl font-extrabold">{shown.title}</h3>
+                  <p className="mt-1 text-grafite-2">{shown.desc}</p>
                 </div>
-              );
-            })}
+                <div>
+                  {shownStatus.isAvailable ? (
+                    <Link
+                      href={`/missao/${shown.num}`}
+                      className={`btn w-full sm:w-auto ${shownStatus.isCompleted ? 'btn-secundario' : 'btn-primario'}`}
+                    >
+                      {shownStatus.isCompleted ? 'Revisar missão' : 'Investigar'}
+                    </Link>
+                  ) : (
+                    <p className="flex items-center gap-2 text-grafite-2">
+                      <Lock className="w-4 h-4" aria-hidden="true" />
+                      {shownStatus.isClosed ? 'O professor ainda não liberou esta missão' : 'Conclua a etapa anterior'}
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

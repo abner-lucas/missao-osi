@@ -1,42 +1,274 @@
 @import "tailwindcss";
 
+/*
+  Missão OSI — identidade "bancada de redes"
+  papel claro + caneta azul para a interface; quadro verde (lousa) para diagramas e terminais;
+  as 7 camadas são os fios do cabo de par trançado (pinagem T568B).
+*/
+
+@theme {
+  --font-display: var(--font-archivo), 'Arial Narrow', system-ui, sans-serif;
+  --font-sans: var(--font-atkinson), system-ui, sans-serif;
+  --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+
+  --color-papel: #f5f7f6;
+  --color-folha: #ffffff;
+  --color-linha: #d6dee3;
+  --color-linha-forte: #aebbc4;
+  --color-quadricula: #dbe6ee;
+  --color-grafite: #1b2430;
+  --color-grafite-2: #4b5765;
+  --color-grafite-3: #6b7683;
+
+  --color-caneta: #1f45b5;
+  --color-caneta-escura: #17358c;
+  --color-caneta-clara: #e7edfb;
+
+  --color-lousa: #1e2d29;
+  --color-lousa-2: #273a35;
+  --color-lousa-3: #344a44;
+  --color-giz: #eef1ec;
+  --color-giz-2: #b4c3bd;
+
+  --color-led-verde: #22a050;
+  --color-led-ambar: #e0a000;
+  --color-led-vermelho: #d6382c;
+
+  --color-ok: #146c35;
+  --color-ok-fundo: #e5f4ea;
+  --color-alerta: #7d5200;
+  --color-alerta-fundo: #fdf3d8;
+  --color-erro: #b42318;
+  --color-erro-fundo: #fdeceb;
+
+  --color-marca: #ffe680;
+
+  /* Fios T568B */
+  --color-fio-laranja: #e1701f;
+  --color-fio-verde: #2c9a57;
+  --color-fio-azul: #2e62c9;
+  --color-fio-marrom: #8a5636;
+
+  --ease-cabo: cubic-bezier(0.22, 0.8, 0.2, 1);
+}
+
 @layer base {
-  :root {
-    --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
-    --font-body: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
   }
 
   body {
-    background-color: #0B1120;
-    color: #E2E8F0;
-    font-family: var(--font-body);
+    background-color: var(--color-papel);
+    color: var(--color-grafite);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    letter-spacing: -0.025em;
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-stretch: 84%;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
   }
 
-  code, pre, kbd {
+  p {
+    text-wrap: pretty;
+  }
+
+  code, pre, kbd, samp {
     font-family: var(--font-mono);
   }
+
+  ::selection {
+    background: var(--color-marca);
+    color: var(--color-grafite);
+  }
+
+  /* Foco sempre visível para teclado */
+  :focus-visible {
+    outline: 3px solid var(--color-caneta);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  .lousa :focus-visible {
+    outline-color: var(--color-marca);
+  }
+
+  button:not(:disabled), [role='button'], summary, label[for] {
+    cursor: pointer;
+  }
 }
 
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.625rem 1.125rem;
+    border-radius: 0.625rem;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    line-height: 1.2;
+    text-align: center;
+    transition: background-color 150ms, border-color 150ms, color 150ms, transform 150ms var(--ease-cabo);
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-primario {
+    background: var(--color-caneta);
+    color: #fff;
+  }
+  .btn-primario:hover:not(:disabled) {
+    background: var(--color-caneta-escura);
+  }
+  .btn-secundario {
+    background: var(--color-folha);
+    color: var(--color-grafite);
+    border: 1.5px solid var(--color-linha-forte);
+  }
+  .btn-secundario:hover:not(:disabled) {
+    border-color: var(--color-caneta);
+    color: var(--color-caneta);
+  }
+  .btn-discreto {
+    color: var(--color-grafite-2);
+    font-weight: 600;
+  }
+  .btn-discreto:hover:not(:disabled) {
+    color: var(--color-caneta);
+    background: var(--color-caneta-clara);
+  }
+  .btn-sucesso {
+    background: var(--color-ok);
+    color: #fff;
+  }
+  .btn-sucesso:hover:not(:disabled) {
+    background: #0f5529;
+  }
+
+  .campo {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.625rem;
+    border: 1.5px solid var(--color-linha-forte);
+    background: var(--color-folha);
+    color: var(--color-grafite);
+    font-size: 1rem;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .campo::placeholder {
+    color: var(--color-grafite-3);
+  }
+  .campo:focus {
+    outline: none;
+    border-color: var(--color-caneta);
+    box-shadow: 0 0 0 3px var(--color-caneta-clara);
+  }
+
+  .rotulo {
+    display: block;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: var(--color-grafite);
+    margin-bottom: 0.375rem;
+  }
+
+  .folha {
+    background: var(--color-folha);
+    border: 1px solid var(--color-linha);
+    border-radius: 1rem;
+  }
+
+  .lousa {
+    background: var(--color-lousa);
+    color: var(--color-giz);
+  }
+
+  /* Papel quadriculado do caderno */
+  .quadriculado {
+    background-color: var(--color-folha);
+    background-image:
+      linear-gradient(var(--color-quadricula) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-quadricula) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: -1px -1px;
+  }
+
+  /* Marca-texto: destaque de algo escolhido pelo aluno */
+  .marca-texto {
+    background: linear-gradient(transparent 38%, var(--color-marca) 38%, var(--color-marca) 88%, transparent 88%);
+  }
+
+  .led {
+    display: inline-block;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.25);
+  }
+  .led-verde { background: var(--color-led-verde); box-shadow: 0 0 6px rgb(34 160 80 / 0.6); }
+  .led-ambar { background: var(--color-led-ambar); box-shadow: 0 0 6px rgb(224 160 0 / 0.6); }
+  .led-vermelho { background: var(--color-led-vermelho); box-shadow: 0 0 6px rgb(214 56 44 / 0.55); }
+  .led-apagado { background: #c3ccd2; }
+
+  .led-piscando {
+    animation: led-piscar 1.4s steps(2, jump-none) infinite;
+  }
+
+  .pular-conteudo {
+    position: absolute;
+    left: 1rem;
+    top: -4rem;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
+    background: var(--color-caneta);
+    color: #fff;
+    font-weight: 700;
+  }
+  .pular-conteudo:focus {
+    top: 1rem;
+  }
 }
-::-webkit-scrollbar-track {
-  background: #0F172A;
+
+@keyframes led-piscar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+
+/* Movimento reduzido: preferência do sistema ou o botão do site */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+html[data-movimento='reduzido'] *,
+html[data-movimento='reduzido'] *::before,
+html[data-movimento='reduzido'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media print {
+  body { background: #fff; }
+  .nao-imprimir { display: none !important; }
 }

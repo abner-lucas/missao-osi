@@ -7,7 +7,9 @@ export const SCHEMA_STATEMENTS: string[] = [
   numero INT NOT NULL PRIMARY KEY,
   titulo VARCHAR(255) NOT NULL,
   camada_numero INT NULL,
-  camada_nome VARCHAR(100) NOT NULL
+  camada_nome VARCHAR(100) NOT NULL,
+  disponivel TINYINT(1) NOT NULL DEFAULT 1,
+  disponibilidade_alterada_em DATETIME(3) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   `CREATE TABLE IF NOT EXISTS alunos (
