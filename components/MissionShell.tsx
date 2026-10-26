@@ -33,6 +33,7 @@ import {
   addHypothesisToNotebook,
   recordTestExecution,
   consolidateMission,
+  updateTestInterpretation,
   getEvidenceNotebook,
   getActiveSession,
   getActiveStudent
@@ -62,6 +63,7 @@ export default function MissionShell({ missionNumber }: Props) {
   const [predictedResult, setPredictedResult] = useState('');
   const [testOutput, setTestOutput] = useState<{ output: string; success: boolean; diagnosticCode: string } | null>(null);
   const [testInterpretation, setTestInterpretation] = useState('');
+  const [lastTestId, setLastTestId] = useState<string | null>(null);
 
   // Consolidation form states
   const [justificationText, setJustificationText] = useState('');
@@ -154,15 +156,25 @@ export default function MissionShell({ missionNumber }: Props) {
     const result = testDef.execute(simulationState);
     setTestOutput(result);
 
-    recordTestExecution({
+    saveTestInterpretation();
+    const record = recordTestExecution({
       missionNumber,
       testKey: testDef.key,
       testName: testDef.label,
       predictedResult: predictedResult.trim(),
       actualResult: result.output,
-      interpretation: testInterpretation.trim(),
+      interpretation: '',
       success: result.success
     });
+    setLastTestId(record.id);
+    setTestInterpretation('');
+  };
+
+  // Interpretation is typed after the result is shown: save it on blur and when leaving Momento D
+  const saveTestInterpretation = () => {
+    if (lastTestId) {
+      updateTestInterpretation(lastTestId, testInterpretation.trim());
+    }
   };
 
   // Apply Intervention (Momento E)
@@ -172,7 +184,7 @@ export default function MissionShell({ missionNumber }: Props) {
 
     const nextState = intervention.apply(simulationState);
     setSimulationState(nextState);
-    updateMissionSimulationState(missionNumber, nextState);
+    updateMissionSimulationState(missionNumber, nextState, { key: intervention.key, label: intervention.label });
     setSuccessFeedback(`Intervenção "${intervention.label}" aplicada ao sistema! Verifique o novo comportamento.`);
     setTimeout(() => setSuccessFeedback(null), 3000);
   };
@@ -191,7 +203,8 @@ export default function MissionShell({ missionNumber }: Props) {
     setErrorFeedback(null);
     consolidateMission({
       missionNumber,
-      identifiedCause: identifiedCause || config.correctCauseSummary,
+      // Only what the student wrote: the expected answer must not be recorded as the student's own
+      identifiedCause: identifiedCause.trim(),
       evidenceUsed: [selectedTestKey, ...selectedConceptIds],
       relatedLayers: [config.layerNumber],
       justificationText: justificationText.trim(),
@@ -535,6 +548,7 @@ export default function MissionShell({ missionNumber }: Props) {
                       type="text"
                       value={testInterpretation}
                       onChange={(e) => setTestInterpretation(e.target.value)}
+                      onBlur={saveTestInterpretation}
                       placeholder="Ex: O resultado confirmou a falta de sinal físico no par trançado."
                       className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                     />
@@ -550,7 +564,10 @@ export default function MissionShell({ missionNumber }: Props) {
                   Voltar
                 </button>
                 <button
-                  onClick={() => setActiveMoment('E')}
+                  onClick={() => {
+                    saveTestInterpretation();
+                    setActiveMoment('E');
+                  }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
                 >
                   <span>Prosseguir para Intervenção</span>
@@ -642,7 +659,7 @@ export default function MissionShell({ missionNumber }: Props) {
                     type="text"
                     value={identifiedCause}
                     onChange={(e) => setIdentifiedCause(e.target.value)}
-                    placeholder={config.correctCauseSummary}
+                    placeholder="Descreva, com suas palavras, a causa raiz da falha..."
                     className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                   />
                 </div>

@@ -13,7 +13,15 @@ import {
 } from './types';
 import { MISSIONS_CONFIG, calculateRubricScore, getTotalScore } from './simulation-engine';
 
-type SyncOperation = 'session' | 'simulation' | 'hypothesis' | 'test' | 'concepts' | 'consolidation' | 'rubric';
+type SyncOperation =
+  | 'session'
+  | 'simulation'
+  | 'hypothesis'
+  | 'test'
+  | 'interpretation'
+  | 'concepts'
+  | 'consolidation'
+  | 'rubric';
 
 // Requests are chained so the server receives them in the order they happened.
 let syncQueue: Promise<void> = Promise.resolve();
@@ -221,6 +229,7 @@ function syncInitialSession(session: ActivitySession): void {
 function rubricCriteriaPayload(rubric: Record<string, RubricCriteriaScore>) {
   return Object.values(rubric).map((crit) => ({
     criterionKey: crit.criterionKey,
+    title: crit.title,
     autoScore: crit.autoScore,
     teacherScore: crit.teacherScore,
     maxScore: crit.maxScore
@@ -313,7 +322,11 @@ export function getMissionSimulationState(missionNumber: number): MissionSimulat
   }
 }
 
-export function updateMissionSimulationState(missionNumber: number, newState: MissionSimulationState): void {
+export function updateMissionSimulationState(
+  missionNumber: number,
+  newState: MissionSimulationState,
+  intervention?: { key: string; label: string }
+): void {
   if (typeof window === 'undefined') return;
   const raw = localStorage.getItem(STORAGE_KEYS.SIMULATION_STATES);
   const states = raw ? JSON.parse(raw) : {};
@@ -332,7 +345,9 @@ export function updateMissionSimulationState(missionNumber: number, newState: Mi
     sendToServer('simulation', {
       missionNumber,
       completed: session.completedMissions.includes(missionNumber),
-      simulationState: newState
+      simulationState: newState,
+      interventionKey: intervention?.key,
+      interventionLabel: intervention?.label
     });
   }
 }
@@ -395,6 +410,17 @@ export function recordTestExecution(record: Omit<TestExecutionRecord, 'id' | 'ex
   sendToServer('test', { ...fullRecord });
 
   return fullRecord;
+}
+
+// The interpretation field only appears after the test ran, so it is saved separately.
+export function updateTestInterpretation(testId: string, interpretation: string): void {
+  const notebook = getEvidenceNotebook();
+  const test = notebook.tests.find((t) => t.id === testId);
+  if (!test || test.interpretation === interpretation) return;
+  test.interpretation = interpretation;
+  saveEvidenceNotebook(notebook);
+
+  sendToServer('interpretation', { testId, interpretation });
 }
 
 export function toggleConceptInNotebook(conceptId: string): boolean {
@@ -518,84 +544,75 @@ export type CloudFetchResult = {
   unauthorized?: boolean;
 };
 
-// Maps the snake_case rows returned by /api/professor/evaluations into evaluations.
+// Maps the Portuguese rows returned by /api/professor/evaluations (MySQL) into evaluations.
 function mapCloudPayload(payload: any): StudentFullEvaluation[] {
-  const {
-    sessions: sessionsData,
-    profiles: profilesData,
-    entries: entriesData,
-    tests: testsData,
-    responses: responsesData,
-    scores: scoresData
-  } = payload;
+  const bySession = (rows: any[] | undefined, sessionId: string) =>
+    (rows || []).filter((r: any) => r.sessao_id === sessionId);
 
-  const profilesMap = new Map((profilesData || []).map((p: any) => [p.id, p]));
+  const alunosMap = new Map((payload.alunos || []).map((a: any) => [a.id, a]));
   const cloudEvaluations: StudentFullEvaluation[] = [];
 
-  for (const sRow of sessionsData || []) {
-    const pRow: any = profilesMap.get(sRow.student_id);
-    if (!pRow) continue;
+  for (const sRow of payload.sessoes || []) {
+    const aRow: any = alunosMap.get(sRow.aluno_id);
+    if (!aRow) continue;
 
     const student: StudentProfile = {
-      id: pRow.id,
-      fullName: pRow.full_name,
-      className: pRow.class_name,
-      createdAt: pRow.created_at,
-      updatedAt: pRow.updated_at
+      id: aRow.id,
+      fullName: aRow.nome_completo,
+      className: aRow.turma,
+      createdAt: aRow.criado_em,
+      updatedAt: aRow.atualizado_em
     };
 
     const session: ActivitySession = {
       id: sRow.id,
-      studentId: sRow.student_id,
-      currentStage: sRow.current_stage,
-      completedMissions: sRow.completed_missions || [],
-      status: sRow.status,
-      startedAt: sRow.started_at,
-      lastActivityAt: sRow.last_activity_at,
-      completedAt: sRow.completed_at || undefined
+      studentId: sRow.aluno_id,
+      currentStage: sRow.etapa_atual,
+      completedMissions: sRow.missoes_concluidas || [],
+      status: sRow.situacao,
+      startedAt: sRow.iniciada_em,
+      lastActivityAt: sRow.ultima_atividade_em,
+      completedAt: sRow.concluida_em || undefined
     };
 
-    const sessHypotheses: InvestigationHypothesis[] = (entriesData || [])
-      .filter((e: any) => e.session_id === sRow.id && e.entry_type === 'hipotese')
-      .map((e: any) => ({
-        id: e.id,
-        missionNumber: e.mission_number,
-        statement: e.content,
-        selectedConceptIds: e.related_concepts || [],
-        createdAt: e.created_at,
-        status: 'ativa' as const
-      }));
+    const hypotheses: InvestigationHypothesis[] = bySession(payload.hipoteses, sRow.id).map((h: any) => ({
+      id: h.id,
+      missionNumber: h.missao,
+      statement: h.enunciado,
+      selectedConceptIds: h.conceitos_relacionados || [],
+      createdAt: h.criada_em,
+      status: h.situacao || 'ativa'
+    }));
 
-    const sessTests: TestExecutionRecord[] = (testsData || [])
-      .filter((t: any) => t.session_id === sRow.id)
-      .map((t: any) => ({
-        id: t.id,
-        missionNumber: t.mission_number,
-        testKey: t.test_key,
-        testName: t.test_key,
-        predictedResult: t.predicted_result,
-        actualResult: t.actual_result,
-        interpretation: t.interpretation || '',
-        executedAt: t.executed_at,
-        success: Boolean(t.success)
-      }));
+    const tests: TestExecutionRecord[] = bySession(payload.testes, sRow.id).map((t: any) => ({
+      id: t.id,
+      missionNumber: t.missao,
+      testKey: t.codigo_teste,
+      testName: t.nome_teste || t.codigo_teste,
+      predictedResult: t.resultado_previsto,
+      actualResult: t.resultado_obtido,
+      interpretation: t.interpretacao || '',
+      executedAt: t.executado_em,
+      success: Boolean(t.sucesso)
+    }));
 
-    const sessResponses = (responsesData || []).filter((r: any) => r.session_id === sRow.id);
     const consolidations: Record<number, MissionConsolidation> = {};
-    let savedConceptIds: string[] = [];
-
-    for (const r of sessResponses) {
-      if (r.question_key === 'mission_consolidation' && r.answer_data) {
-        consolidations[r.mission_number] = r.answer_data as MissionConsolidation;
-      } else if (r.question_key === 'saved_atlas_concepts' && r.answer_data?.savedConceptIds) {
-        savedConceptIds = r.answer_data.savedConceptIds;
-      }
+    for (const c of bySession(payload.consolidacoes, sRow.id)) {
+      consolidations[c.missao] = {
+        missionNumber: c.missao,
+        identifiedCause: c.causa_identificada || '',
+        evidenceUsed: c.evidencias_utilizadas || [],
+        relatedLayers: c.camadas_relacionadas || [],
+        justificationText: c.justificativa,
+        verificationConfirmed: Boolean(c.verificacao_confirmada),
+        submittedAt: c.enviada_em
+      };
     }
 
     const notebook: EvidenceNotebook = {
-      hypotheses: sessHypotheses,
-      tests: sessTests,
-      savedConceptIds,
+      hypotheses,
+      tests,
+      savedConceptIds: bySession(payload.conceitos, sRow.id).map((c: any) => c.conceito_id),
       consolidations
     };
 
@@ -607,22 +624,14 @@ function mapCloudPayload(payload: any): StudentFullEvaluation[] {
       consolidations: notebook.consolidations
     });
 
-    let teacherFeedbackGeneral: string | undefined;
-    let reviewedBy: string | undefined;
-    let reviewedAt: string | undefined;
-
-    const sessScores = (scoresData || []).filter((sc: any) => sc.session_id === sRow.id);
-    for (const sc of sessScores) {
-      if (rubric[sc.criterion_key]) {
-        if (sc.grading_source === 'revisado_professor') {
-          rubric[sc.criterion_key].teacherScore = Number(sc.score);
-          rubric[sc.criterion_key].status = 'revisado_professor';
-        }
-        if (sc.teacher_feedback) teacherFeedbackGeneral = sc.teacher_feedback;
-        if (sc.reviewed_by) reviewedBy = sc.reviewed_by;
-        if (sc.reviewed_at) reviewedAt = sc.reviewed_at;
+    for (const n of bySession(payload.notas, sRow.id)) {
+      if (rubric[n.criterio] && n.nota_professor !== null && n.nota_professor !== undefined) {
+        rubric[n.criterio].teacherScore = Number(n.nota_professor);
+        rubric[n.criterio].status = 'revisado_professor';
       }
     }
+
+    const review: any = bySession(payload.avaliacoes, sRow.id)[0];
 
     cloudEvaluations.push({
       sessionId: session.id,
@@ -631,9 +640,9 @@ function mapCloudPayload(payload: any): StudentFullEvaluation[] {
       notebook,
       rubric,
       finalTotalScore: getTotalScore(rubric),
-      teacherFeedbackGeneral,
-      reviewedBy,
-      reviewedAt
+      teacherFeedbackGeneral: review?.parecer || undefined,
+      reviewedBy: review?.avaliador || undefined,
+      reviewedAt: review?.avaliado_em || undefined
     });
   }
 
@@ -705,10 +714,19 @@ export function updateTeacherEvaluation(params: {
   const now = new Date().toISOString();
   const reviewer = params.teacherName || 'Prof. Me. Ábner Lucas';
 
+  // Only criteria the teacher actually changed become teacher scores; untouched ones keep
+  // following the automatic score, so progress made after the review still counts.
   for (const [key, score] of Object.entries(params.rubricScores)) {
-    if (target.rubric[key]) {
-      target.rubric[key].teacherScore = score;
-      target.rubric[key].status = 'revisado_professor';
+    const crit = target.rubric[key];
+    if (!crit) continue;
+    const changed = Math.abs(score - crit.autoScore) > 0.001;
+    const previouslyReviewed = crit.teacherScore !== undefined;
+    if (changed || (previouslyReviewed && Math.abs(score - (crit.teacherScore as number)) > 0.001)) {
+      crit.teacherScore = score;
+      crit.status = 'revisado_professor';
+    } else if (!previouslyReviewed) {
+      crit.teacherScore = undefined;
+      crit.status = 'auto';
     }
   }
 

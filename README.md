@@ -31,7 +31,31 @@ Sem as variáveis `DB_*`, o site funciona normalmente e o progresso fica salvo s
 | `DB_PASSWORD` | Senha do banco |
 | `TEACHER_ACCESS_KEY` | Chave do Painel do Professor (`/professor/login`) |
 
-As tabelas são criadas automaticamente na primeira requisição (ver `lib/db-schema.ts`).
+
+## Banco de dados (análise no phpMyAdmin)
+
+Tabelas e colunas em português; datas no horário de Brasília. As tabelas são criadas sozinhas (`lib/db-schema.ts`).
+
+| Tabela | Conteúdo |
+| --- | --- |
+| `alunos` | Nome e turma |
+| `sessoes` | Andamento da atividade (etapa, missões concluídas, situação) |
+| `missoes` | Catálogo das 8 missões |
+| `progresso_missoes` | Situação de cada missão por aluno |
+| `hipoteses` | Momento C: hipóteses formuladas |
+| `testes_executados` | Momento D: previsão, resultado e interpretação |
+| `intervencoes` | Momento E: correções aplicadas |
+| `consolidacoes` | Momento F: causa identificada e justificativa |
+| `conceitos_salvos` | Conceitos do Atlas guardados no caderno |
+| `notas_rubrica` | Nota automática e nota do professor por critério |
+| `avaliacoes_professor` | Parecer geral do professor |
+
+Visões prontas para análise:
+
+- `vw_resumo_alunos`: uma linha por aluno com contagens, nota automática, nota final e se houve atividade após a revisão.
+- `vw_notas_por_criterio`: notas de cada critério da rubrica.
+- `vw_registro_missoes`: o que cada aluno fez em cada missão.
+- `vw_linha_do_tempo`: todas as ações em ordem cronológica.
 
 ## Deploy na Hostinger
 

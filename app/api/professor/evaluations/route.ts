@@ -10,7 +10,7 @@ function isTeacher(request: NextRequest): boolean {
   return request.cookies.get(TEACHER_COOKIE)?.value === teacherToken();
 }
 
-// Returns the tables the dashboards need, in the same snake_case shape the client maps.
+// Returns the Portuguese tables the dashboards need (mapped on the client by lib/storage.ts).
 // Teacher (cookie): every session. Student: only `?sessionId=<own session uuid>`.
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('sessionId');
@@ -23,33 +23,37 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const query = async (sql: string, where: string) =>
-      (await db.query<RowDataPacket[]>(sessionId ? `${sql} WHERE ${where} = ?` : sql, sessionId ? [sessionId] : []))[0];
+    const query = async (sql: string, column: string) =>
+      (await db.query<RowDataPacket[]>(sessionId ? `${sql} WHERE ${column} = ?` : sql, sessionId ? [sessionId] : []))[0];
 
-    const [sessions, profiles, entries, tests, responses, scores] = await Promise.all([
-      query('SELECT * FROM activity_sessions', 'id').then((rows) =>
-        rows.sort((a, b) => new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime())
+    const [sessoes, alunos, hipoteses, testes, consolidacoes, conceitos, notas, avaliacoes] = await Promise.all([
+      query('SELECT * FROM sessoes', 'id').then((rows) =>
+        rows.sort((a, b) => new Date(b.ultima_atividade_em).getTime() - new Date(a.ultima_atividade_em).getTime())
       ),
-      query(
-        'SELECT p.* FROM student_profiles p' +
-          (sessionId ? ' JOIN activity_sessions s ON s.student_id = p.id' : ''),
-        's.id'
-      ),
-      query('SELECT * FROM investigation_entries', 'session_id'),
-      query('SELECT * FROM test_executions', 'session_id'),
-      query('SELECT * FROM student_responses', 'session_id'),
-      query('SELECT * FROM assessment_scores', 'session_id')
+      query('SELECT a.* FROM alunos a' + (sessionId ? ' JOIN sessoes s ON s.aluno_id = a.id' : ''), 's.id'),
+      query('SELECT * FROM hipoteses', 'sessao_id'),
+      query('SELECT * FROM testes_executados', 'sessao_id'),
+      query('SELECT * FROM consolidacoes', 'sessao_id'),
+      query('SELECT * FROM conceitos_salvos', 'sessao_id'),
+      query('SELECT * FROM notas_rubrica', 'sessao_id'),
+      query('SELECT * FROM avaliacoes_professor', 'sessao_id')
     ]);
 
     return NextResponse.json({
       ok: true,
       configured: true,
-      sessions: sessions.map((s) => ({ ...s, completed_missions: fromDbJson<number[]>(s.completed_missions, []) })),
-      profiles,
-      entries: entries.map((e) => ({ ...e, related_concepts: fromDbJson<string[]>(e.related_concepts, []) })),
-      tests,
-      responses: responses.map((r) => ({ ...r, answer_data: fromDbJson<unknown>(r.answer_data, null) })),
-      scores
+      sessoes: sessoes.map((s) => ({ ...s, missoes_concluidas: fromDbJson<number[]>(s.missoes_concluidas, []) })),
+      alunos,
+      hipoteses: hipoteses.map((h) => ({ ...h, conceitos_relacionados: fromDbJson<string[]>(h.conceitos_relacionados, []) })),
+      testes,
+      consolidacoes: consolidacoes.map((c) => ({
+        ...c,
+        evidencias_utilizadas: fromDbJson<string[]>(c.evidencias_utilizadas, []),
+        camadas_relacionadas: fromDbJson<number[]>(c.camadas_relacionadas, [])
+      })),
+      conceitos,
+      notas,
+      avaliacoes
     });
   } catch (err) {
     console.error('[MySQL] Falha ao buscar avaliações:', err);
@@ -57,7 +61,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Teacher review: overwrites the rubric rows with the teacher's scores and feedback.
+// Teacher review: stores the teacher's score per criterion (keeping the automatic one) and the general feedback.
 export async function POST(request: NextRequest) {
   if (!isTeacher(request)) {
     return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
@@ -71,43 +75,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Dados inválidos' }, { status: 400 });
   }
 
+  const db = await getDb().catch(() => null);
+  if (!db) {
+    return NextResponse.json({ ok: false, error: 'Banco indisponível' }, { status: 503 });
+  }
+
+  const conn = await db.getConnection();
   try {
-    const db = await getDb();
+    const [found] = await conn.query<RowDataPacket[]>('SELECT id FROM sessoes WHERE id = ?', [body.sessionId]);
+    if (found.length === 0) {
+      // Demo/seed students exist only in the browser
+      return NextResponse.json({ ok: false, error: 'Sessão não encontrada no banco' }, { status: 404 });
+    }
+
     const reviewedAt = new Date(body.reviewedAt || Date.now());
-    const reviewer = asText(body.reviewedBy, 255) || null;
-    const feedback = asText(body.feedback, 10000) || null;
+    await conn.beginTransaction();
 
     for (const crit of body.criteria) {
       const key = asText(crit?.criterionKey, 64);
       if (!key) continue;
       const reviewed = crit.teacherScore !== undefined && crit.teacherScore !== null;
-      await db.execute(
-        `INSERT INTO assessment_scores
-           (session_id, criterion_key, score, max_score, grading_source, teacher_feedback, reviewed_by, reviewed_at)
+      await conn.execute(
+        `INSERT INTO notas_rubrica (sessao_id, criterio, titulo_criterio, nota_automatica, nota_professor, nota_maxima, origem, atualizado_em)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
-           score = VALUES(score),
-           max_score = VALUES(max_score),
-           grading_source = VALUES(grading_source),
-           teacher_feedback = VALUES(teacher_feedback),
-           reviewed_by = VALUES(reviewed_by),
-           reviewed_at = VALUES(reviewed_at)`,
+           titulo_criterio = VALUES(titulo_criterio),
+           nota_automatica = VALUES(nota_automatica),
+           nota_professor = VALUES(nota_professor),
+           nota_maxima = VALUES(nota_maxima),
+           origem = VALUES(origem),
+           atualizado_em = VALUES(atualizado_em)`,
         [
           body.sessionId,
           key,
-          asNumber(reviewed ? crit.teacherScore : crit.autoScore),
+          asText(crit.title, 255) || key,
+          asNumber(crit.autoScore),
+          reviewed ? asNumber(crit.teacherScore) : null,
           asNumber(crit.maxScore),
           reviewed ? 'revisado_professor' : 'auto',
-          feedback,
-          reviewer,
           reviewedAt
         ]
       );
     }
+
+    await conn.execute(
+      `INSERT INTO avaliacoes_professor (sessao_id, parecer, avaliador, avaliado_em) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE parecer = VALUES(parecer), avaliador = VALUES(avaliador), avaliado_em = VALUES(avaliado_em)`,
+      [body.sessionId, asText(body.feedback, 10000) || null, asText(body.reviewedBy, 255) || null, reviewedAt]
+    );
+
+    await conn.commit();
     return NextResponse.json({ ok: true });
   } catch (err) {
-    // errno 1452: the session was never synced (e.g. demo/seed students)
+    await conn.rollback().catch(() => undefined);
     console.error('[MySQL] Falha ao gravar avaliação docente:', err);
     return NextResponse.json({ ok: false, error: 'Falha ao gravar' }, { status: 500 });
+  } finally {
+    conn.release();
   }
 }

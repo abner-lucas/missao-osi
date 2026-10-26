@@ -1,7 +1,12 @@
 import mysql from 'mysql2/promise';
 import { SCHEMA_STATEMENTS } from './db-schema';
+import { migrateLegacyTables } from './db-legacy-migration';
+import { MISSIONS_CONFIG } from './simulation-engine';
 
 // Server-only MySQL access (Hostinger). Never import this file from a 'use client' module.
+
+// Datas gravadas e lidas no horário de Brasília (Pará não tem horário de verão)
+export const DB_TIMEZONE = '-03:00';
 
 const globalForDb = globalThis as unknown as {
   missaoOsiPool?: mysql.Pool;
@@ -22,7 +27,7 @@ function getPool(): mysql.Pool {
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       charset: 'utf8mb4',
-      timezone: 'Z',
+      timezone: DB_TIMEZONE,
       connectionLimit: 5,
       waitForConnections: true
     });
@@ -30,10 +35,22 @@ function getPool(): mysql.Pool {
   return globalForDb.missaoOsiPool;
 }
 
+async function seedMissions(pool: mysql.Pool): Promise<void> {
+  for (const mission of Object.values(MISSIONS_CONFIG)) {
+    await pool.execute(
+      `INSERT INTO missoes (numero, titulo, camada_numero, camada_nome) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE titulo = VALUES(titulo), camada_numero = VALUES(camada_numero), camada_nome = VALUES(camada_nome)`,
+      [mission.missionNumber, mission.title, mission.layerNumber || null, mission.layerName || 'Integrada']
+    );
+  }
+}
+
 async function createSchema(pool: mysql.Pool): Promise<void> {
   for (const statement of SCHEMA_STATEMENTS) {
     await pool.query(statement);
   }
+  await seedMissions(pool);
+  await migrateLegacyTables(pool);
 }
 
 // Returns the pool, creating the tables on first use.

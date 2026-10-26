@@ -2,19 +2,29 @@ import { NextResponse } from 'next/server';
 import type { PoolConnection } from 'mysql2/promise';
 import { getDb, isDatabaseConfigured, toDbDate, toDbDateOrNull, toDbJson } from '@/lib/db';
 import { asMissionNumber, asNumber, asText, isUuid } from '@/lib/server-validation';
+import { MISSIONS_CONFIG } from '@/lib/simulation-engine';
+import { OSI_LAYERS_DATA } from '@/lib/atlas-data';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type Payload = Record<string, any>;
 
+const CONCEPTS = new Map(
+  OSI_LAYERS_DATA.flatMap((layer) => layer.keyConcepts.map((c) => [c.id, { title: c.title, layer: layer.number }] as const))
+);
+
+function testLabel(missionNumber: number, key: string): string {
+  return MISSIONS_CONFIG[missionNumber]?.availableTests.find((t) => t.key === key)?.label || key;
+}
+
 // Every request carries the active student + session so the parent rows always exist
 // before the dependent insert (requests may arrive after a failed first sync).
 async function upsertStudentAndSession(conn: PoolConnection, student: Payload, session: Payload): Promise<void> {
   await conn.execute(
-    `INSERT INTO student_profiles (id, full_name, class_name, created_at, updated_at)
+    `INSERT INTO alunos (id, nome_completo, turma, criado_em, atualizado_em)
      VALUES (?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), class_name = VALUES(class_name), updated_at = VALUES(updated_at)`,
+     ON DUPLICATE KEY UPDATE nome_completo = VALUES(nome_completo), turma = VALUES(turma), atualizado_em = VALUES(atualizado_em)`,
     [
       student.id,
       asText(student.fullName, 255, 'Estudante'),
@@ -24,25 +34,27 @@ async function upsertStudentAndSession(conn: PoolConnection, student: Payload, s
     ]
   );
 
-  const completed = Array.isArray(session.completedMissions)
-    ? session.completedMissions.map(Number).filter((n: number) => asMissionNumber(n) !== null)
+  const completed: number[] = Array.isArray(session.completedMissions)
+    ? Array.from(new Set<number>(session.completedMissions.map(Number))).filter((n) => asMissionNumber(n) !== null)
     : [];
 
   await conn.execute(
-    `INSERT INTO activity_sessions
-       (id, student_id, activity_version, current_stage, completed_missions, status, started_at, last_activity_at, completed_at)
-     VALUES (?, ?, '1.0.0', ?, ?, ?, ?, ?, ?)
+    `INSERT INTO sessoes
+       (id, aluno_id, versao_atividade, etapa_atual, missoes_concluidas, qtd_missoes_concluidas, situacao, iniciada_em, ultima_atividade_em, concluida_em)
+     VALUES (?, ?, '1.0.0', ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       current_stage = VALUES(current_stage),
-       completed_missions = VALUES(completed_missions),
-       status = VALUES(status),
-       last_activity_at = VALUES(last_activity_at),
-       completed_at = VALUES(completed_at)`,
+       etapa_atual = VALUES(etapa_atual),
+       missoes_concluidas = VALUES(missoes_concluidas),
+       qtd_missoes_concluidas = VALUES(qtd_missoes_concluidas),
+       situacao = VALUES(situacao),
+       ultima_atividade_em = VALUES(ultima_atividade_em),
+       concluida_em = VALUES(concluida_em)`,
     [
       session.id,
       student.id,
       asMissionNumber(session.currentStage) ?? 1,
       toDbJson(completed),
+      completed.length,
       session.status === 'concluido' ? 'concluido' : 'em_andamento',
       toDbDate(session.startedAt),
       toDbDate(session.lastActivityAt),
@@ -56,34 +68,20 @@ async function upsertMissionProgress(
   sessionId: string,
   missionNumber: number,
   status: string,
-  simulationState: unknown,
+  simulationState: any,
   completedAt: Date | null
 ): Promise<void> {
+  const now = new Date();
   await conn.execute(
-    `INSERT INTO mission_progress (session_id, mission_number, status, simulation_state, completed_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO progresso_missoes (sessao_id, missao, situacao, problema_resolvido, estado_simulacao, iniciada_em, concluida_em, atualizado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       status = VALUES(status),
-       simulation_state = VALUES(simulation_state),
-       completed_at = COALESCE(VALUES(completed_at), completed_at),
-       updated_at = VALUES(updated_at)`,
-    [sessionId, missionNumber, status, toDbJson(simulationState), completedAt, new Date()]
-  );
-}
-
-async function upsertStudentResponse(
-  conn: PoolConnection,
-  sessionId: string,
-  missionNumber: number,
-  questionKey: string,
-  answerData: unknown,
-  submittedAt: Date
-): Promise<void> {
-  await conn.execute(
-    `INSERT INTO student_responses (session_id, mission_number, question_key, answer_data, submitted_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE answer_data = VALUES(answer_data), updated_at = VALUES(updated_at)`,
-    [sessionId, missionNumber, questionKey, toDbJson(answerData), submittedAt, new Date()]
+       situacao = IF(situacao = 'concluida', situacao, VALUES(situacao)),
+       problema_resolvido = VALUES(problema_resolvido),
+       estado_simulacao = VALUES(estado_simulacao),
+       concluida_em = COALESCE(concluida_em, VALUES(concluida_em)),
+       atualizado_em = VALUES(atualizado_em)`,
+    [sessionId, missionNumber, status, simulationState?.isResolved ? 1 : 0, toDbJson(simulationState), now, completedAt, now]
   );
 }
 
@@ -106,11 +104,14 @@ async function applyOperation(conn: PoolConnection, op: string, sessionId: strin
         null
       );
       await conn.execute(
-        `INSERT INTO simulation_events (session_id, mission_number, event_key, payload, created_at) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO intervencoes (sessao_id, missao, codigo_intervencao, nome_intervencao, problema_resolvido, estado_simulacao, aplicada_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           sessionId,
           mission,
-          data.simulationState?.isResolved ? 'intervention_resolved' : 'state_updated',
+          asText(data.interventionKey, 100) || null,
+          asText(data.interventionLabel, 255) || null,
+          data.simulationState?.isResolved ? 1 : 0,
           toDbJson(data.simulationState ?? null),
           new Date()
         ]
@@ -121,14 +122,15 @@ async function applyOperation(conn: PoolConnection, op: string, sessionId: strin
       const mission = asMissionNumber(data.missionNumber);
       if (!mission || !isUuid(data.id)) return;
       await conn.execute(
-        `INSERT IGNORE INTO investigation_entries (id, session_id, mission_number, entry_type, content, related_concepts, created_at)
-         VALUES (?, ?, ?, 'hipotese', ?, ?, ?)`,
+        `INSERT IGNORE INTO hipoteses (id, sessao_id, missao, enunciado, conceitos_relacionados, situacao, criada_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           data.id,
           sessionId,
           mission,
           asText(data.statement, 5000),
-          toDbJson(Array.isArray(data.selectedConceptIds) ? data.selectedConceptIds : []),
+          toDbJson(Array.isArray(data.selectedConceptIds) ? data.selectedConceptIds.map(String) : []),
+          asText(data.status, 20) || 'ativa',
           toDbDate(data.createdAt)
         ]
       );
@@ -137,15 +139,17 @@ async function applyOperation(conn: PoolConnection, op: string, sessionId: strin
     case 'test': {
       const mission = asMissionNumber(data.missionNumber);
       if (!mission || !isUuid(data.id)) return;
+      const testKey = asText(data.testKey, 100);
       await conn.execute(
-        `INSERT IGNORE INTO test_executions
-           (id, session_id, mission_number, test_key, predicted_result, actual_result, interpretation, success, executed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT IGNORE INTO testes_executados
+           (id, sessao_id, missao, codigo_teste, nome_teste, resultado_previsto, resultado_obtido, interpretacao, sucesso, executado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           data.id,
           sessionId,
           mission,
-          asText(data.testKey, 100),
+          testKey,
+          asText(data.testName, 255) || testLabel(mission, testKey),
           asText(data.predictedResult, 5000),
           asText(data.actualResult, 5000),
           asText(data.interpretation, 5000) || null,
@@ -155,39 +159,80 @@ async function applyOperation(conn: PoolConnection, op: string, sessionId: strin
       );
       return;
     }
+    case 'interpretation': {
+      if (!isUuid(data.testId)) return;
+      await conn.execute(`UPDATE testes_executados SET interpretacao = ? WHERE id = ? AND sessao_id = ?`, [
+        asText(data.interpretation, 5000) || null,
+        data.testId,
+        sessionId
+      ]);
+      return;
+    }
     case 'concepts': {
-      const ids = Array.isArray(data.savedConceptIds) ? data.savedConceptIds.map(String) : [];
-      await upsertStudentResponse(conn, sessionId, 1, 'saved_atlas_concepts', { savedConceptIds: ids }, new Date());
+      // The client sends the full current list: remove unchecked concepts, keep the original save date of the rest.
+      const ids: string[] = Array.isArray(data.savedConceptIds)
+        ? Array.from(new Set<string>(data.savedConceptIds.map((id: unknown) => asText(id, 100)))).filter(Boolean)
+        : [];
+      if (ids.length === 0) {
+        await conn.execute(`DELETE FROM conceitos_salvos WHERE sessao_id = ?`, [sessionId]);
+        return;
+      }
+      await conn.query(`DELETE FROM conceitos_salvos WHERE sessao_id = ? AND conceito_id NOT IN (?)`, [sessionId, ids]);
+      for (const id of ids) {
+        const concept = CONCEPTS.get(id);
+        await conn.execute(
+          `INSERT IGNORE INTO conceitos_salvos (sessao_id, conceito_id, titulo_conceito, camada_numero, salvo_em) VALUES (?, ?, ?, ?, ?)`,
+          [sessionId, id, concept?.title ?? null, concept?.layer ?? null, new Date()]
+        );
+      }
       return;
     }
     case 'consolidation': {
-      const mission = asMissionNumber(data.consolidation?.missionNumber);
+      const c = data.consolidation;
+      const mission = asMissionNumber(c?.missionNumber);
       if (!mission) return;
       const now = new Date();
-      await upsertStudentResponse(
-        conn,
-        sessionId,
-        mission,
-        'mission_consolidation',
-        data.consolidation,
-        toDbDate(data.consolidation.submittedAt || now)
+      await conn.execute(
+        `INSERT INTO consolidacoes
+           (sessao_id, missao, causa_identificada, evidencias_utilizadas, camadas_relacionadas, justificativa, verificacao_confirmada, enviada_em, atualizada_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           causa_identificada = VALUES(causa_identificada),
+           evidencias_utilizadas = VALUES(evidencias_utilizadas),
+           camadas_relacionadas = VALUES(camadas_relacionadas),
+           justificativa = VALUES(justificativa),
+           verificacao_confirmada = VALUES(verificacao_confirmada),
+           atualizada_em = VALUES(atualizada_em)`,
+        [
+          sessionId,
+          mission,
+          asText(c.identifiedCause, 5000) || null,
+          toDbJson(Array.isArray(c.evidenceUsed) ? c.evidenceUsed : []),
+          toDbJson(Array.isArray(c.relatedLayers) ? c.relatedLayers : []),
+          asText(c.justificationText, 10000),
+          c.verificationConfirmed ? 1 : 0,
+          toDbDate(c.submittedAt || now),
+          now
+        ]
       );
       await upsertMissionProgress(conn, sessionId, mission, 'concluida', data.simulationState ?? null, now);
       return;
     }
     case 'rubric': {
-      // Automatic scores only: rows already reviewed by the teacher are never overwritten here.
+      // Automatic scores only: the teacher's score column is never touched here.
       const criteria = Array.isArray(data.criteria) ? data.criteria : [];
       for (const crit of criteria) {
         const key = asText(crit?.criterionKey, 64);
         if (!key) continue;
         await conn.execute(
-          `INSERT INTO assessment_scores (session_id, criterion_key, score, max_score, grading_source)
-           VALUES (?, ?, ?, ?, 'auto')
+          `INSERT INTO notas_rubrica (sessao_id, criterio, titulo_criterio, nota_automatica, nota_maxima, origem, atualizado_em)
+           VALUES (?, ?, ?, ?, ?, 'auto', ?)
            ON DUPLICATE KEY UPDATE
-             score = IF(grading_source = 'revisado_professor', score, VALUES(score)),
-             max_score = VALUES(max_score)`,
-          [sessionId, key, asNumber(crit.autoScore), asNumber(crit.maxScore)]
+             titulo_criterio = VALUES(titulo_criterio),
+             nota_automatica = VALUES(nota_automatica),
+             nota_maxima = VALUES(nota_maxima),
+             atualizado_em = VALUES(atualizado_em)`,
+          [sessionId, key, asText(crit.title, 255) || key, asNumber(crit.autoScore), asNumber(crit.maxScore), new Date()]
         );
       }
       return;
