@@ -12,7 +12,36 @@ import {
   RubricCriteriaScore
 } from './types';
 import { MISSIONS_CONFIG, calculateRubricScore, getTotalScore } from './simulation-engine';
-import { supabase, isSupabaseConfigured } from './supabase-client';
+
+type SyncOperation = 'session' | 'simulation' | 'hypothesis' | 'test' | 'concepts' | 'consolidation' | 'rubric';
+
+// Requests are chained so the server receives them in the order they happened.
+let syncQueue: Promise<void> = Promise.resolve();
+
+// Sends a student event to the MySQL API (app/api/sync). localStorage stays the source of truth offline.
+function sendToServer(op: SyncOperation, data: Record<string, unknown>): void {
+  if (typeof window === 'undefined') return;
+  const student = getActiveStudent();
+  const session = getActiveSession();
+  if (!student || !session || !isValidUuid(student.id) || !isValidUuid(session.id)) return;
+
+  const body = JSON.stringify({ op, student, session, data });
+  syncQueue = syncQueue.then(async () => {
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: body.length < 60000
+      });
+      if (!res.ok && res.status !== 503) {
+        console.warn(`[MySQL] Falha ao sincronizar "${op}" (HTTP ${res.status})`);
+      }
+    } catch (err) {
+      console.warn(`[MySQL] Erro de rede ao sincronizar "${op}":`, err);
+    }
+  });
+}
 
 const STORAGE_KEYS = {
   CURRENT_STUDENT: 'missao_osi_current_student',
@@ -181,77 +210,21 @@ export function clearActiveStudentSession(): void {
   localStorage.removeItem(STORAGE_KEYS.EVIDENCE_NOTEBOOK);
 }
 
-async function syncInitialSessionToSupabase(student: StudentProfile, session: ActivitySession): Promise<void> {
-  if (!isSupabaseConfigured || !supabase || !isValidUuid(student.id) || !isValidUuid(session.id)) return;
-  try {
-    const { error: profileErr } = await supabase.from('student_profiles').upsert({
-      id: student.id,
-      full_name: student.fullName,
-      class_name: student.className,
-      created_at: student.createdAt,
-      updated_at: student.updatedAt
-    });
-    if (profileErr) {
-      console.warn('[Supabase] Falha ao sincronizar student_profiles:', profileErr.message);
-      return;
-    }
-
-    const { error: sessionErr } = await supabase.from('activity_sessions').upsert({
-      id: session.id,
-      student_id: student.id,
-      activity_version: '1.0.0',
-      current_stage: session.currentStage,
-      completed_missions: session.completedMissions,
-      status: session.status,
-      started_at: session.startedAt,
-      last_activity_at: session.lastActivityAt,
-      completed_at: session.completedAt || null
-    });
-    if (sessionErr) {
-      console.warn('[Supabase] Falha ao sincronizar activity_sessions:', sessionErr.message);
-      return;
-    }
-
-    await supabase.from('mission_progress').upsert(
-      {
-        session_id: session.id,
-        mission_number: session.currentStage <= 8 ? session.currentStage : 8,
-        status: 'em_investigacao',
-        simulation_state: getMissionSimulationState(session.currentStage <= 8 ? session.currentStage : 8),
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: 'session_id,mission_number' }
-    );
-  } catch (err) {
-    console.warn('[Supabase] Erro de rede na sincronização inicial:', err);
-  }
+function syncInitialSession(session: ActivitySession): void {
+  const missionNumber = session.currentStage <= 8 ? session.currentStage : 8;
+  sendToServer('session', {
+    missionNumber,
+    simulationState: getMissionSimulationState(missionNumber)
+  });
 }
 
-async function syncRubricScoresToSupabase(
-  sessionId: string,
-  rubric: Record<string, RubricCriteriaScore>,
-  teacherFeedback?: string,
-  reviewedBy?: string,
-  reviewedAt?: string
-): Promise<void> {
-  if (!isSupabaseConfigured || !supabase || !isValidUuid(sessionId)) return;
-  try {
-    const rows = Object.values(rubric).map((crit) => ({
-      session_id: sessionId,
-      criterion_key: crit.criterionKey,
-      score: crit.teacherScore !== undefined ? crit.teacherScore : crit.autoScore,
-      max_score: crit.maxScore,
-      grading_source: crit.status,
-      teacher_feedback: teacherFeedback || crit.teacherComment || null,
-      reviewed_by: reviewedBy || null,
-      reviewed_at: reviewedAt || null
-    }));
-    await supabase.from('assessment_scores').upsert(rows, {
-      onConflict: 'session_id,criterion_key'
-    });
-  } catch (err) {
-    console.warn('[Supabase] Erro ao sincronizar assessment_scores:', err);
-  }
+function rubricCriteriaPayload(rubric: Record<string, RubricCriteriaScore>) {
+  return Object.values(rubric).map((crit) => ({
+    criterionKey: crit.criterionKey,
+    autoScore: crit.autoScore,
+    teacherScore: crit.teacherScore,
+    maxScore: crit.maxScore
+  }));
 }
 
 export function createOrResumeStudentSession(fullName: string, className: string = '1º Ano Informática - IFPA Breves'): {
@@ -276,11 +249,11 @@ export function createOrResumeStudentSession(fullName: string, className: string
     localStorage.setItem(STORAGE_KEYS.CURRENT_STUDENT, JSON.stringify(existingStudent));
     localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(existingSession));
     syncSessionToRegistry(existingStudent, existingSession);
-    void syncInitialSessionToSupabase(existingStudent, existingSession);
+    syncInitialSession(existingSession);
     return { student: existingStudent, session: existingSession };
   }
 
-  // Create new student with valid UUIDs for Supabase compatibility
+  // Create new student with valid UUIDs (primary keys in MySQL)
   const studentId = generateUuid();
   const sessionId = generateUuid();
   const now = new Date().toISOString();
@@ -323,7 +296,7 @@ export function createOrResumeStudentSession(fullName: string, className: string
   localStorage.setItem(STORAGE_KEYS.EVIDENCE_NOTEBOOK, JSON.stringify(initialNotebook));
 
   syncSessionToRegistry(student, session);
-  void syncInitialSessionToSupabase(student, session);
+  syncInitialSession(session);
 
   return { student, session };
 }
@@ -356,35 +329,11 @@ export function updateMissionSimulationState(missionNumber: number, newState: Mi
     localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(session));
     syncSessionToRegistry(student, session);
 
-    if (isSupabaseConfigured && supabase && isValidUuid(session.id)) {
-      void (async () => {
-        try {
-          await supabase.from('mission_progress').upsert(
-            {
-              session_id: session.id,
-              mission_number: missionNumber,
-              status: session.completedMissions.includes(missionNumber) ? 'concluida' : 'em_investigacao',
-              simulation_state: newState,
-              updated_at: now
-            },
-            { onConflict: 'session_id,mission_number' }
-          );
-          await supabase.from('simulation_events').insert({
-            session_id: session.id,
-            mission_number: missionNumber,
-            event_key: newState.isResolved ? 'intervention_resolved' : 'state_updated',
-            payload: newState,
-            created_at: now
-          });
-          await supabase
-            .from('activity_sessions')
-            .update({ last_activity_at: now })
-            .eq('id', session.id);
-        } catch (err) {
-          console.warn('[Supabase] Erro ao atualizar estado da simulação:', err);
-        }
-      })();
-    }
+    sendToServer('simulation', {
+      missionNumber,
+      completed: session.completedMissions.includes(missionNumber),
+      simulationState: newState
+    });
   }
 }
 
@@ -427,24 +376,7 @@ export function addHypothesisToNotebook(missionNumber: number, statement: string
   notebook.hypotheses.push(newHypo);
   saveEvidenceNotebook(notebook);
 
-  const session = getActiveSession();
-  if (isSupabaseConfigured && supabase && session && isValidUuid(session.id)) {
-    void (async () => {
-      try {
-        await supabase.from('investigation_entries').insert({
-          id: newHypo.id,
-          session_id: session.id,
-          mission_number: missionNumber,
-          entry_type: 'hipotese',
-          content: newHypo.statement,
-          related_concepts: selectedConceptIds,
-          created_at: now
-        });
-      } catch (err) {
-        console.warn('[Supabase] Erro ao gravar hipótese:', err);
-      }
-    })();
-  }
+  sendToServer('hypothesis', { ...newHypo });
 
   return newHypo;
 }
@@ -460,26 +392,7 @@ export function recordTestExecution(record: Omit<TestExecutionRecord, 'id' | 'ex
   notebook.tests.push(fullRecord);
   saveEvidenceNotebook(notebook);
 
-  const session = getActiveSession();
-  if (isSupabaseConfigured && supabase && session && isValidUuid(session.id)) {
-    void (async () => {
-      try {
-        await supabase.from('test_executions').insert({
-          id: fullRecord.id,
-          session_id: session.id,
-          mission_number: fullRecord.missionNumber,
-          test_key: fullRecord.testKey,
-          predicted_result: fullRecord.predictedResult,
-          actual_result: fullRecord.actualResult,
-          interpretation: fullRecord.interpretation || null,
-          success: fullRecord.success,
-          executed_at: now
-        });
-      } catch (err) {
-        console.warn('[Supabase] Erro ao gravar execução de teste:', err);
-      }
-    })();
-  }
+  sendToServer('test', { ...fullRecord });
 
   return fullRecord;
 }
@@ -496,27 +409,7 @@ export function toggleConceptInNotebook(conceptId: string): boolean {
   }
   saveEvidenceNotebook(notebook);
 
-  const session = getActiveSession();
-  if (isSupabaseConfigured && supabase && session && isValidUuid(session.id)) {
-    const now = new Date().toISOString();
-    void (async () => {
-      try {
-        await supabase.from('student_responses').upsert(
-          {
-            session_id: session.id,
-            mission_number: 1,
-            question_key: 'saved_atlas_concepts',
-            answer_data: { savedConceptIds: notebook.savedConceptIds },
-            submitted_at: now,
-            updated_at: now
-          },
-          { onConflict: 'session_id,mission_number,question_key' }
-        );
-      } catch (err) {
-        console.warn('[Supabase] Erro ao sincronizar conceitos salvos:', err);
-      }
-    })();
-  }
+  sendToServer('concepts', { savedConceptIds: notebook.savedConceptIds });
 
   return added;
 }
@@ -546,49 +439,10 @@ export function consolidateMission(consolidation: MissionConsolidation): void {
     localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(session));
     syncSessionToRegistry(student, session);
 
-    if (isSupabaseConfigured && supabase && isValidUuid(session.id)) {
-      const simState = getMissionSimulationState(consolidation.missionNumber);
-      void (async () => {
-        try {
-          await supabase.from('student_responses').upsert(
-            {
-              session_id: session.id,
-              mission_number: consolidation.missionNumber,
-              question_key: 'mission_consolidation',
-              answer_data: consolidation,
-              submitted_at: consolidation.submittedAt || now,
-              updated_at: now
-            },
-            { onConflict: 'session_id,mission_number,question_key' }
-          );
-
-          await supabase.from('mission_progress').upsert(
-            {
-              session_id: session.id,
-              mission_number: consolidation.missionNumber,
-              status: 'concluida',
-              simulation_state: simState,
-              completed_at: now,
-              updated_at: now
-            },
-            { onConflict: 'session_id,mission_number' }
-          );
-
-          await supabase
-            .from('activity_sessions')
-            .update({
-              current_stage: session.currentStage,
-              completed_missions: session.completedMissions,
-              status: session.status,
-              last_activity_at: session.lastActivityAt,
-              completed_at: session.completedAt || null
-            })
-            .eq('id', session.id);
-        } catch (err) {
-          console.warn('[Supabase] Erro ao consolidar missão:', err);
-        }
-      })();
-    }
+    sendToServer('consolidation', {
+      consolidation,
+      simulationState: getMissionSimulationState(consolidation.missionNumber)
+    });
   }
 }
 
@@ -640,16 +494,8 @@ function syncSessionToRegistry(student: StudentProfile, session: ActivitySession
 
   localStorage.setItem(STORAGE_KEYS.ALL_STUDENTS_REGISTRY, JSON.stringify(registry));
 
-  // Sync calculated rubric scores to Supabase
-  if (isSupabaseConfigured && supabase && isValidUuid(session.id)) {
-    void syncRubricScoresToSupabase(
-      session.id,
-      evaluation.rubric,
-      evaluation.teacherFeedbackGeneral,
-      evaluation.reviewedBy,
-      evaluation.reviewedAt
-    );
-  }
+  // Sync calculated (automatic) rubric scores; the server keeps teacher-reviewed rows intact
+  sendToServer('rubric', { criteria: rubricCriteriaPayload(evaluation.rubric) });
 }
 
 export function getAllStudentEvaluations(): StudentFullEvaluation[] {
@@ -666,140 +512,163 @@ export function getAllStudentEvaluations(): StudentFullEvaluation[] {
   }
 }
 
-export async function fetchAllStudentEvaluationsFromCloud(): Promise<StudentFullEvaluation[]> {
-  const localEvaluations = getAllStudentEvaluations();
-  if (!isSupabaseConfigured || !supabase) {
-    return localEvaluations;
+export type CloudFetchResult = {
+  evaluations: StudentFullEvaluation[];
+  databaseConnected: boolean;
+  unauthorized?: boolean;
+};
+
+// Maps the snake_case rows returned by /api/professor/evaluations into evaluations.
+function mapCloudPayload(payload: any): StudentFullEvaluation[] {
+  const {
+    sessions: sessionsData,
+    profiles: profilesData,
+    entries: entriesData,
+    tests: testsData,
+    responses: responsesData,
+    scores: scoresData
+  } = payload;
+
+  const profilesMap = new Map((profilesData || []).map((p: any) => [p.id, p]));
+  const cloudEvaluations: StudentFullEvaluation[] = [];
+
+  for (const sRow of sessionsData || []) {
+    const pRow: any = profilesMap.get(sRow.student_id);
+    if (!pRow) continue;
+
+    const student: StudentProfile = {
+      id: pRow.id,
+      fullName: pRow.full_name,
+      className: pRow.class_name,
+      createdAt: pRow.created_at,
+      updatedAt: pRow.updated_at
+    };
+
+    const session: ActivitySession = {
+      id: sRow.id,
+      studentId: sRow.student_id,
+      currentStage: sRow.current_stage,
+      completedMissions: sRow.completed_missions || [],
+      status: sRow.status,
+      startedAt: sRow.started_at,
+      lastActivityAt: sRow.last_activity_at,
+      completedAt: sRow.completed_at || undefined
+    };
+
+    const sessHypotheses: InvestigationHypothesis[] = (entriesData || [])
+      .filter((e: any) => e.session_id === sRow.id && e.entry_type === 'hipotese')
+      .map((e: any) => ({
+        id: e.id,
+        missionNumber: e.mission_number,
+        statement: e.content,
+        selectedConceptIds: e.related_concepts || [],
+        createdAt: e.created_at,
+        status: 'ativa' as const
+      }));
+
+    const sessTests: TestExecutionRecord[] = (testsData || [])
+      .filter((t: any) => t.session_id === sRow.id)
+      .map((t: any) => ({
+        id: t.id,
+        missionNumber: t.mission_number,
+        testKey: t.test_key,
+        testName: t.test_key,
+        predictedResult: t.predicted_result,
+        actualResult: t.actual_result,
+        interpretation: t.interpretation || '',
+        executedAt: t.executed_at,
+        success: Boolean(t.success)
+      }));
+
+    const sessResponses = (responsesData || []).filter((r: any) => r.session_id === sRow.id);
+    const consolidations: Record<number, MissionConsolidation> = {};
+    let savedConceptIds: string[] = [];
+
+    for (const r of sessResponses) {
+      if (r.question_key === 'mission_consolidation' && r.answer_data) {
+        consolidations[r.mission_number] = r.answer_data as MissionConsolidation;
+      } else if (r.question_key === 'saved_atlas_concepts' && r.answer_data?.savedConceptIds) {
+        savedConceptIds = r.answer_data.savedConceptIds;
+      }
+    }
+
+    const notebook: EvidenceNotebook = {
+      hypotheses: sessHypotheses,
+      tests: sessTests,
+      savedConceptIds,
+      consolidations
+    };
+
+    const rubric = calculateRubricScore({
+      completedMissions: session.completedMissions,
+      hypotheses: notebook.hypotheses,
+      tests: notebook.tests,
+      savedConceptIds: notebook.savedConceptIds,
+      consolidations: notebook.consolidations
+    });
+
+    let teacherFeedbackGeneral: string | undefined;
+    let reviewedBy: string | undefined;
+    let reviewedAt: string | undefined;
+
+    const sessScores = (scoresData || []).filter((sc: any) => sc.session_id === sRow.id);
+    for (const sc of sessScores) {
+      if (rubric[sc.criterion_key]) {
+        if (sc.grading_source === 'revisado_professor') {
+          rubric[sc.criterion_key].teacherScore = Number(sc.score);
+          rubric[sc.criterion_key].status = 'revisado_professor';
+        }
+        if (sc.teacher_feedback) teacherFeedbackGeneral = sc.teacher_feedback;
+        if (sc.reviewed_by) reviewedBy = sc.reviewed_by;
+        if (sc.reviewed_at) reviewedAt = sc.reviewed_at;
+      }
+    }
+
+    cloudEvaluations.push({
+      sessionId: session.id,
+      student,
+      session,
+      notebook,
+      rubric,
+      finalTotalScore: getTotalScore(rubric),
+      teacherFeedbackGeneral,
+      reviewedBy,
+      reviewedAt
+    });
   }
 
+  return cloudEvaluations;
+}
+
+// Student view: fetches only the active session's evaluation (e.g. teacher grading done on another machine).
+export async function fetchOwnEvaluationFromCloud(sessionId: string): Promise<StudentFullEvaluation | null> {
+  if (!isValidUuid(sessionId)) return null;
   try {
-    const [
-      { data: sessionsData, error: sessErr },
-      { data: profilesData },
-      { data: entriesData },
-      { data: testsData },
-      { data: responsesData },
-      { data: scoresData }
-    ] = await Promise.all([
-      supabase.from('activity_sessions').select('*').order('last_activity_at', { ascending: false }),
-      supabase.from('student_profiles').select('*'),
-      supabase.from('investigation_entries').select('*'),
-      supabase.from('test_executions').select('*'),
-      supabase.from('student_responses').select('*'),
-      supabase.from('assessment_scores').select('*')
-    ]);
+    const res = await fetch(`/api/professor/evaluations?sessionId=${encodeURIComponent(sessionId)}`, {
+      cache: 'no-store'
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload?.ok || !payload.configured) return null;
+    return mapCloudPayload(payload).find((e) => e.sessionId === sessionId) || null;
+  } catch {
+    return null;
+  }
+}
 
-    if (sessErr || !sessionsData) {
-      return localEvaluations;
+export async function fetchAllStudentEvaluationsFromCloud(): Promise<CloudFetchResult> {
+  const localEvaluations = getAllStudentEvaluations();
+
+  try {
+    const res = await fetch('/api/professor/evaluations', { cache: 'no-store' });
+    if (res.status === 401) {
+      return { evaluations: localEvaluations, databaseConnected: false, unauthorized: true };
+    }
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload?.ok || !payload.configured) {
+      return { evaluations: localEvaluations, databaseConnected: false };
     }
 
-    const profilesMap = new Map((profilesData || []).map((p: any) => [p.id, p]));
-    const cloudEvaluations: StudentFullEvaluation[] = [];
-
-    for (const sRow of sessionsData) {
-      const pRow: any = profilesMap.get(sRow.student_id);
-      if (!pRow) continue;
-
-      const student: StudentProfile = {
-        id: pRow.id,
-        fullName: pRow.full_name,
-        className: pRow.class_name,
-        createdAt: pRow.created_at,
-        updatedAt: pRow.updated_at
-      };
-
-      const session: ActivitySession = {
-        id: sRow.id,
-        studentId: sRow.student_id,
-        currentStage: sRow.current_stage,
-        completedMissions: sRow.completed_missions || [],
-        status: sRow.status,
-        startedAt: sRow.started_at,
-        lastActivityAt: sRow.last_activity_at,
-        completedAt: sRow.completed_at || undefined
-      };
-
-      const sessHypotheses: InvestigationHypothesis[] = (entriesData || [])
-        .filter((e: any) => e.session_id === sRow.id && e.entry_type === 'hipotese')
-        .map((e: any) => ({
-          id: e.id,
-          missionNumber: e.mission_number,
-          statement: e.content,
-          selectedConceptIds: e.related_concepts || [],
-          createdAt: e.created_at,
-          status: 'ativa' as const
-        }));
-
-      const sessTests: TestExecutionRecord[] = (testsData || [])
-        .filter((t: any) => t.session_id === sRow.id)
-        .map((t: any) => ({
-          id: t.id,
-          missionNumber: t.mission_number,
-          testKey: t.test_key,
-          testName: t.test_key,
-          predictedResult: t.predicted_result,
-          actualResult: t.actual_result,
-          interpretation: t.interpretation || '',
-          executedAt: t.executed_at,
-          success: Boolean(t.success)
-        }));
-
-      const sessResponses = (responsesData || []).filter((r: any) => r.session_id === sRow.id);
-      const consolidations: Record<number, MissionConsolidation> = {};
-      let savedConceptIds: string[] = [];
-
-      for (const r of sessResponses) {
-        if (r.question_key === 'mission_consolidation' && r.answer_data) {
-          consolidations[r.mission_number] = r.answer_data as MissionConsolidation;
-        } else if (r.question_key === 'saved_atlas_concepts' && r.answer_data?.savedConceptIds) {
-          savedConceptIds = r.answer_data.savedConceptIds;
-        }
-      }
-
-      const notebook: EvidenceNotebook = {
-        hypotheses: sessHypotheses,
-        tests: sessTests,
-        savedConceptIds,
-        consolidations
-      };
-
-      const rubric = calculateRubricScore({
-        completedMissions: session.completedMissions,
-        hypotheses: notebook.hypotheses,
-        tests: notebook.tests,
-        savedConceptIds: notebook.savedConceptIds,
-        consolidations: notebook.consolidations
-      });
-
-      let teacherFeedbackGeneral: string | undefined;
-      let reviewedBy: string | undefined;
-      let reviewedAt: string | undefined;
-
-      const sessScores = (scoresData || []).filter((sc: any) => sc.session_id === sRow.id);
-      for (const sc of sessScores) {
-        if (rubric[sc.criterion_key]) {
-          if (sc.grading_source === 'revisado_professor') {
-            rubric[sc.criterion_key].teacherScore = Number(sc.score);
-            rubric[sc.criterion_key].status = 'revisado_professor';
-          }
-          if (sc.teacher_feedback) teacherFeedbackGeneral = sc.teacher_feedback;
-          if (sc.reviewed_by) reviewedBy = sc.reviewed_by;
-          if (sc.reviewed_at) reviewedAt = sc.reviewed_at;
-        }
-      }
-
-      cloudEvaluations.push({
-        sessionId: session.id,
-        student,
-        session,
-        notebook,
-        rubric,
-        finalTotalScore: getTotalScore(rubric),
-        teacherFeedbackGeneral,
-        reviewedBy,
-        reviewedAt
-      });
-    }
+    const cloudEvaluations = mapCloudPayload(payload);
 
     // Merge cloud evaluations with local evaluations (avoiding duplicates by sessionId)
     const mergedMap = new Map<string, StudentFullEvaluation>();
@@ -816,10 +685,10 @@ export async function fetchAllStudentEvaluationsFromCloud(): Promise<StudentFull
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEYS.ALL_STUDENTS_REGISTRY, JSON.stringify(merged));
     }
-    return merged;
+    return { evaluations: merged, databaseConnected: true };
   } catch (err) {
-    console.warn('[Supabase] Falha ao buscar avaliações da nuvem, usando cache local:', err);
-    return localEvaluations;
+    console.warn('[MySQL] Falha ao buscar avaliações do servidor, usando cache local:', err);
+    return { evaluations: localEvaluations, databaseConnected: false };
   }
 }
 
@@ -850,14 +719,22 @@ export function updateTeacherEvaluation(params: {
 
   localStorage.setItem(STORAGE_KEYS.ALL_STUDENTS_REGISTRY, JSON.stringify(evaluations));
 
-  if (isSupabaseConfigured && supabase && isValidUuid(params.sessionId)) {
-    void syncRubricScoresToSupabase(
-      params.sessionId,
-      target.rubric,
-      params.feedbackGeneral,
-      reviewer,
-      now
-    );
+  if (isValidUuid(params.sessionId)) {
+    void fetch('/api/professor/evaluations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: params.sessionId,
+        criteria: rubricCriteriaPayload(target.rubric),
+        feedback: params.feedbackGeneral,
+        reviewedBy: reviewer,
+        reviewedAt: now
+      })
+    })
+      .then((res) => {
+        if (!res.ok) console.warn(`[MySQL] Falha ao gravar avaliação docente (HTTP ${res.status})`);
+      })
+      .catch((err) => console.warn('[MySQL] Erro de rede ao gravar avaliação docente:', err));
   }
 }
 

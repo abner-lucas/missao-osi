@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import Header from '@/components/Header';
 import { getAllStudentEvaluations, fetchAllStudentEvaluationsFromCloud, updateTeacherEvaluation } from '@/lib/storage';
-import { isSupabaseConfigured } from '@/lib/supabase-client';
 import { StudentFullEvaluation, RubricCriteriaScore } from '@/lib/types';
 import { getTotalScore } from '@/lib/simulation-engine';
 
@@ -35,6 +34,7 @@ export default function ProfessorDashboardPage() {
   const [filterClass, setFilterClass] = useState('todas');
   const [selectedStudent, setSelectedStudent] = useState<StudentFullEvaluation | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [databaseConnected, setDatabaseConnected] = useState(false);
 
   // Grading form state inside modal
   const [rubricScores, setRubricScores] = useState<Record<string, number>>({});
@@ -58,8 +58,15 @@ export default function ProfessorDashboardPage() {
     setSyncing(true);
     const localList = getAllStudentEvaluations();
     setEvaluations(localList);
-    const cloudList = await fetchAllStudentEvaluationsFromCloud();
-    setEvaluations(cloudList);
+    const cloud = await fetchAllStudentEvaluationsFromCloud();
+    if (cloud.unauthorized) {
+      // Server session (cookie) expired or missing
+      localStorage.removeItem('missao_osi_teacher_auth');
+      router.push('/professor/login');
+      return;
+    }
+    setEvaluations(cloud.evaluations);
+    setDatabaseConnected(cloud.databaseConnected);
     setSyncing(false);
   };
 
@@ -95,7 +102,7 @@ export default function ProfessorDashboardPage() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('missao_osi_teacher_auth');
     }
-    router.push('/');
+    void fetch('/api/professor/login', { method: 'DELETE' }).finally(() => router.push('/'));
   };
 
   // CSV Export for class registry
@@ -160,18 +167,18 @@ export default function ProfessorDashboardPage() {
               </div>
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-mono border ${
-                  isSupabaseConfigured
+                  databaseConnected
                     ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
                     : 'bg-amber-950/80 text-amber-300 border-amber-800'
                 }`}
                 title={
-                  isSupabaseConfigured
-                    ? 'Sincronização em nuvem com Supabase ativa'
-                    : 'Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para sincronizar entre máquinas'
+                  databaseConnected
+                    ? 'Sincronização com o banco MySQL da Hostinger ativa'
+                    : 'Configure DB_NAME, DB_USER e DB_PASSWORD no servidor para sincronizar entre máquinas'
                 }
               >
                 <Database className="w-3 h-3" />
-                <span>{isSupabaseConfigured ? 'Supabase Conectado' : 'Persistência Local (Navegador)'}</span>
+                <span>{databaseConnected ? 'MySQL Conectado' : 'Persistência Local (Navegador)'}</span>
               </span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight">

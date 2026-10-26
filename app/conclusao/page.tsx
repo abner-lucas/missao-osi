@@ -23,7 +23,7 @@ import {
   getActiveSession,
   getEvidenceNotebook,
   getAllStudentEvaluations,
-  fetchAllStudentEvaluationsFromCloud
+  fetchOwnEvaluationFromCloud
 } from '@/lib/storage';
 import { StudentProfile, ActivitySession, EvidenceNotebook, StudentFullEvaluation } from '@/lib/types';
 import { calculateRubricScore, getTotalScore } from '@/lib/simulation-engine';
@@ -47,19 +47,20 @@ export default function ConclusaoPage() {
     setSession(sess);
     setNotebook(nb);
 
-    // Fetch existing evaluation if teacher graded locally or in Supabase
+    // Fetch existing evaluation if teacher graded locally or on the server (MySQL)
     const all = getAllStudentEvaluations();
     const match = all.find((e) => e.student.id === s.id || e.sessionId === sess?.id);
     if (match) {
       setEvaluation(match);
     }
 
-    fetchAllStudentEvaluationsFromCloud().then((cloudList) => {
-      const cloudMatch = cloudList.find((e) => e.student.id === s.id || e.sessionId === sess?.id);
-      if (cloudMatch) {
-        setEvaluation(cloudMatch);
-      }
-    });
+    if (sess) {
+      fetchOwnEvaluationFromCloud(sess.id).then((cloudMatch) => {
+        if (cloudMatch) {
+          setEvaluation(cloudMatch);
+        }
+      });
+    }
   }, [router]);
 
   if (!student) return null;
