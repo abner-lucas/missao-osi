@@ -706,23 +706,8 @@ export default function MissionShell({ missionNumber }: Props) {
           <p className="text-grafite-2">Usar pistas não tira pontos.</p>
         </div>
         <ul className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[
-            {
-              level: 1,
-              title: 'Pista 1: observação',
-              text: 'Compare os LEDs e o ponto onde o pacote para na topologia. O que muda de um equipamento para o outro?',
-            },
-            {
-              level: 2,
-              title: 'Pista 2: evidências',
-              text: 'Compare o resultado do teste de diagnóstico antes e depois da intervenção no painel.',
-            },
-            {
-              level: 3,
-              title: 'Pista 3: Atlas OSI',
-              text: `Consulte a seção da Camada ${config.layerNumber || 'Integrada'} no Atlas OSI para revisar suas definições.`,
-            },
-          ].map((hint) => {
+          {(MISSION_HINTS[missionNumber] || MISSION_HINTS[1]).map((text, i) => ({ level: i + 1, title: HINT_TITLES[i], text }))
+.map((hint) => {
             const open = unlockedHintLevel >= hint.level;
             return (
               <li key={hint.level} className={`rounded-xl border-2 p-4 ${open ? 'border-led-ambar bg-alerta-fundo/60' : 'border-dashed border-linha-forte'}`}>
@@ -746,6 +731,52 @@ export default function MissionShell({ missionNumber }: Props) {
     </div>
   );
 }
+
+// Hints guide the reasoning and the justification without naming the cause (see project memory).
+const HINT_TITLES = ['Pista 1: observação', 'Pista 2: evidências', 'Pista 3: justificativa'];
+
+const MISSION_HINTS: Record<number, [string, string, string]> = {
+  1: [
+    'Olhe os LEDs do PC e do switch. Um LED apagado diz algo sobre qual camada pode estar envolvida?',
+    'Rode os dois testes. Eles medem a mesma coisa? O que o resultado de cada um diz sobre o caminho do sinal?',
+    'Na justificativa, diga o que você viu antes, o que mudou depois da correção e qual conceito da camada Física explica isso.',
+  ],
+  2: [
+    'O sinal elétrico já chega ao switch. Repare em qual trecho da topologia o pacote para agora.',
+    'Compare o que a tabela MAC mostra antes e depois da intervenção. O que o switch passou a saber?',
+    'Explique como o switch decide para qual porta enviar um quadro, e por que isso falhava aqui.',
+  ],
+  3: [
+    'Compare o ping para um computador da mesma rede com o ping para o servidor. Qual funciona?',
+    'Abra os detalhes do PC na topologia e confira a configuração IP. Algum campo chama atenção?',
+    'Explique como um pacote sai da rede local para chegar a outra rede, e o que faltava para isso acontecer.',
+  ],
+  4: [
+    'O pacote chega ao servidor, mas a conexão não abre. Qual camada cuida de abrir conexões?',
+    'Compare a porta que o cliente usa com as portas que o servidor está atendendo.',
+    'Explique o que é uma porta lógica e por que a escolha da porta impedia a conexão.',
+  ],
+  5: [
+    'A conexão TCP está aberta. Então o problema está acima da camada de Transporte. Qual camada controla o diálogo?',
+    'Leia o status do diálogo no teste antes e depois da intervenção. O que mudou?',
+    'Explique a diferença entre ter uma conexão aberta e manter uma conversa válida entre os sistemas.',
+  ],
+  6: [
+    'Os dados chegam inteiros, mas aparecem errados na tela. Qual camada cuida do formato dos dados?',
+    'Compare os bytes recebidos com o texto exibido. Os bytes mudaram, ou só a forma de lê-los?',
+    'Explique por que o mesmo conjunto de bytes pode virar textos diferentes, e o que foi ajustado.',
+  ],
+  7: [
+    'Todas as camadas de baixo funcionam. O servidor responde, então olhe com atenção o que ele responde.',
+    'Leia o código de resposta HTTP e compare o que foi pedido com o que o servidor oferece.',
+    'Explique o que o código de resposta significa e por que ele prova que a rede estava funcionando.',
+  ],
+  8: [
+    'Pode haver mais de uma falha. Investigue uma camada de cada vez, de baixo para cima.',
+    'Depois de cada correção, rode os testes de novo: o que resolveu e o que ainda falha?',
+    'Na justificativa, separe cada falha: em qual camada estava, qual evidência mostrou e como foi corrigida.',
+  ],
+};
 
 type MomentKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 

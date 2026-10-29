@@ -99,7 +99,7 @@ export default function Dialog({
             aria-labelledby={titleId}
             aria-describedby={description ? descId : undefined}
             tabIndex={-1}
-            className={`bg-folha flex flex-col shadow-[0_24px_60px_-20px_rgb(27_36_48/0.45)] outline-none ${
+            className={`bg-folha text-grafite flex flex-col shadow-[0_24px_60px_-20px_rgb(27_36_48/0.45)] outline-none ${
               lateral
                 ? 'w-full max-w-2xl h-full'
                 : `w-full ${width} max-h-[92vh] rounded-t-2xl sm:rounded-2xl`
